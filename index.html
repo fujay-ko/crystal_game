@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>水晶遊戲 - Python 網頁版 (V4 - RPG Mode)</title>
+    <link rel="stylesheet" href="lib/codemirror.min.css">
+    <link rel="stylesheet" href="lib/dracula.min.css">
+    <script src="lib/codemirror.min.js"></script>
+    <script src="lib/python.min.js"></script>
+    <script src="lib/skulpt.min.js"></script>
+    <script src="lib/skulpt-stdlib.js"></script>
+
+    <style>
+        body { font-family: 'Comic Sans MS', '微軟正黑體', sans-serif; background-color: #2c3e50; margin: 0; display: flex; height: 100vh; color: white; overflow: hidden; }
+        #left-panel { width: 35%; display: flex; flex-direction: column; padding: 10px; box-sizing: border-box; background: #34495e; border-right: 2px solid #2c3e50; }
+        #right-panel { width: 65%; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #222; position: relative; }
+        
+        h2 { margin: 5px 0; font-size: 1.2rem; }
+        .CodeMirror { flex-grow: 1; border-radius: 5px; font-size: 16px; }
+        
+        #controls { margin-top: 10px; display: flex; gap: 10px; flex-wrap: wrap;}
+        button { padding: 8px 15px; font-size: 14px; border: none; border-radius: 5px; cursor: pointer; color: white; font-weight: bold; }
+        #btn-run { background-color: #27ae60; flex-grow: 2;}
+        #btn-run:hover { background-color: #2ecc71; }
+        #btn-reset { background-color: #c0392b; }
+        #btn-reset:hover { background-color: #e74c3c; }
+
+        /* 讓 Canvas 填滿右側，並保持比例 */
+        canvas { background: #000; box-shadow: 0 0 20px rgba(0,0,0,0.5); border-radius: 4px; cursor: pointer;}
+        #output { height: 120px; background: #000; color: #0f0; padding: 10px; overflow-y: auto; font-family: monospace; margin-top: 10px; border-radius: 5px; border: 1px solid #555; white-space: pre-wrap;}
+        
+        #level-indicator { margin-bottom: 10px; padding: 5px; font-size: 18px; color: yellow; font-weight: bold; }
+        
+        #loader { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); display: flex; justify-content: center; align-items: center; z-index: 10; font-size: 24px; color: white; display: none;}
+    </style>
+</head>
+<body>
+
+    <div id="left-panel">
+        <div style="display:flex; justify-content: space-between; align-items: center;">
+            <h2>程式碼編輯區</h2>
+            <span id="level-indicator">Stage 1</span>
+        </div>
+        <textarea id="code">def stage1():
+    # 第一關: 練習基本移動
+    # 任務: 走到紅色水晶處並取得它。
+    move_forward()
+    get_crystal()
+</textarea>
+        <div id="controls">
+            <button id="btn-run" onclick="runPython()">▶ 執行程式 (Run)</button>
+            <button id="btn-reset" onclick="fullReset()">↺ 重新開始 (Restart)</button>
+        </div>
+        <div id="output">系統準備就緒...</div>
+    </div>
+
+    <div id="right-panel">
+        <canvas id="gameCanvas" width="860" height="640"></canvas>
+        <div id="loader">遊戲資源載入中...</div>
+    </div>
+
+<script>
+    // === 全域變數 ===
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const TILE_SIZE = 64;
+    const ASSETS_PATH = './material/';
+    
+    // 遊戲狀態 (Virtual State - Python 邏輯用)
+    let v_row = 4, v_col = 3, v_dir = 0, v_crystals_collected = 0;
+    let v_crystals_on_map = [];
+    
+    // 視覺狀態 (Display State - 動畫繪圖用)
+    let d_row = 4, d_col = 3, d_dir = 0;
+    let d_crystals_on_map = [];
+    let d_crystals_collected = 0; // 新增：視覺上的收集數量
+    
+    let animationQueue = [];
+    let isAnimating = false;
+    
+    // 地圖與水晶設定
+    let mapData = [
+        [0,0,0,0,0,0,0,0],
+        [0,1,1,1,1,1,1,0],
+        [0,1,0,0,0,0,0,0],
+        [0,1,0,1,1,1,1,0],
+        [0,1,0,1,0,0,1,0],
+        [0,1,0,0,0,0,1,0],
+        [0,1,1,1,1,1,1,0],
+        [0,0,0,0,0,0,0,0]
+    ];
+    // 水晶座標: Red, Orange, Green, Blue, Black
+    const initialCrystalSet = [[3, 3], [3, 6], [6, 3], [4, 1], [1, 6]]; 
+
+    // === 資源載入 ===
+    const images = {};
+    const imageFiles = {
+        'bg': 'bg_1024x768.png', 'bg256': 'bg_256.png',
+        'road': 'road_64.png', 'wall': 'wall_64.png',
+        'c1': 'crystal_red.png', 'c2': 'crystal_orange.png', 'c3': 'crystal_green.png', 'c4': 'crystal_blue.png', 'c5': 'crystal_black.png',
+        'mc0': 'mc0.png', 'mc1': 'mc1.png', 'mc2': 'mc2.png', 'mc3': 'mc3.png',
+        'arrow0': 'arrow0_32.png', 'arrow1': 'arrow1_32.png', 'arrow2': 'arrow2_32.png', 'arrow3': 'arrow3_32.png',
+        'box': 'box_64.png', 'func': 'funs.png',
+        'm1': 'm1.png', 'm2': 'm2.png', 'm3': 'm3.png', 'm4': 'm4.png', 'm5': 'm5.png',
+        'victory': 'victory.png', 'defeat': 'defeat.png'
+    };
+    
+    const audio = {
+        'victory': new Audio(ASSETS_PATH + 'victory.mp3'),
+        'get': new Audio(ASSETS_PATH + 'get.mp3'),
+        'fail': new Audio(ASSETS_PATH + 'fail.mp3'),
+        'knock': new Audio(ASSETS_PATH + 'knock_on_wall.mp3')
+    };
+
+    let assetsLoaded = 0;
+    const totalAssets = Object.keys(imageFiles).length;
+
+    function log(text) {
+        const out = document.getElementById("output");
+        if (out) {
+            out.textContent += text + "\n";
+            out.scrollTop = out.scrollHeight;
+        }
+        console.log(text);
+    }
+
+    function loadAssets() {
+        document.getElementById('loader').style.display = 'flex';
+        for (let key in imageFiles) {
+            const img = new Image();
+            img.src = ASSETS_PATH + imageFiles[key];
+            img.onload = () => { assetsLoaded++; checkLoadComplete(); };
+            img.onerror = () => { console.error("Failed: " + key); assetsLoaded++; checkLoadComplete(); };
+            images[key] = img;
+        }
+    }
+
+    function checkLoadComplete() {
+        if (assetsLoaded === totalAssets) {
+            document.getElementById('loader').style.display = 'none';
+            fullReset(); // 初始啟動
+        }
+    }
+
+    // === 遊戲核心邏輯 ===
+    
+    // 完全重置 (回到 Stage 1)
+    function fullReset() {
+        v_row = 4; v_col = 3; v_dir = 0; 
+        v_crystals_collected = 0;
+        v_crystals_on_map = JSON.parse(JSON.stringify(initialCrystalSet));
+        
+        d_crystals_collected = 0; // 重置視覺計數
+        syncDisplayState();
+        updateEditorContent(1);
+        drawGame();
+        log("遊戲已重新開始 (Stage 1)");
+    }
+
+    // 同步視覺狀態與邏輯狀態 (在非動畫期間使用)
+    function syncDisplayState() {
+        d_row = v_row; d_col = v_col; d_dir = v_dir;
+        d_crystals_on_map = JSON.parse(JSON.stringify(v_crystals_on_map));
+        d_crystals_collected = v_crystals_collected; // 同步收集數
+        animationQueue = [];
+        isAnimating = false;
+    }
+
+    // 準備執行 Python 前的狀態備份 (如果執行失敗可以還原? 目前不實作 Undo，只做同步)
+    function prepareRun() {
+        // 這裡不需要重置位置！這是 RPG 模式的關鍵。
+        // 我們只需要清空動畫佇列，確保從當前位置開始跑。
+        animationQueue = [];
+        isAnimating = false;
+        // 注意：v_row 等變數保持原樣，等待 Python 指令來改變它們
+    }
+
+    // === 繪圖系統 (依照 game_lib.py 座標) ===
+    function drawGame(overrideMsg = null) {
+        ctx.fillStyle = "#000";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        // 1. 繪製背景 (鋪滿)
+        if(img('bg')) ctx.drawImage(images['bg'], 0, 0);
+
+        // 2. 繪製地圖 (0,0) - 8x8 Tiles
+        for(let r=0; r<8; r++) {
+            for(let c=0; c<8; c++) {
+                let x = c * TILE_SIZE;
+                let y = r * TILE_SIZE;
+                if (mapData[r][c] === 0) {
+                   if(img('wall')) ctx.drawImage(images['wall'], x, y);
+                } else {
+                   if(img('road')) ctx.drawImage(images['road'], x, y);
+                }
+            }
+        }
+        
+        // 3. 繪製地圖上的水晶
+        d_crystals_on_map.forEach((pos) => {
+            let originalIndex = initialCrystalSet.findIndex(p => p[0] === pos[0] && p[1] === pos[1]);
+            let imgKey = 'c' + ((originalIndex % 5) + 1);
+            if (img(imgKey)) ctx.drawImage(images[imgKey], pos[1]*64, pos[0]*64);
+        });
+
+        // 4. 繪製角色
+        let mcKey = 'mc' + d_dir;
+        let arrowKey = 'arrow' + d_dir;
+        if(img(mcKey)) ctx.drawImage(images[mcKey], d_col*64, d_row*64);
+        
+        let ax = d_col*64, ay = d_row*64;
+        if (d_dir===0) { ax += 16; ay = (d_row-1)*64+48; } 
+        else if (d_dir===1) { ax = (d_col+1)*64-16; ay += 16; } 
+        else if (d_dir===2) { ax += 16; ay = (d_row+1)*64-16; } 
+        else if (d_dir===3) { ax = (d_col-1)*64+48; ay += 16; }
+        if(img(arrowKey)) ctx.drawImage(images[arrowKey], ax, ay);
+
+        // === UI 部分 ===
+        
+        // 5. 背包欄 (Right Side)
+        // 文字 "x / 5"
+        ctx.fillStyle = "black";
+        ctx.font = "20px 'Comic Sans MS', Arial";
+        ctx.textAlign = "center";
+        ctx.fillText(`${d_crystals_collected} / 5`, 570, 30);
+        
+        // 5個格子
+        for(let i=0; i<5; i++) {
+            if(img('box')) ctx.drawImage(images['box'], 526 + i*64, 40);
+            // 如果已收集，畫出小水晶
+            if(i < d_crystals_collected) {
+                 let cKey = 'c' + (i+1);
+                 if(img(cKey)) ctx.drawImage(images[cKey], 538 + i*64, 50, 40, 40);
+            }
+        }
+        
+        // 6. 函數說明板
+        if(img('func')) ctx.drawImage(images['func'], 526, 120);
+        
+        // 7. 任務卷軸 (根據目前水晶數決定顯示 m1 ~ m5)
+        // 邏輯: 0水晶 -> Stage1 (m1), 1水晶 -> Stage2 (m2)...
+        let currentStage = d_crystals_collected + 1;
+        if (currentStage > 5) currentStage = 5; // 通關後顯示最後一個或勝利畫面
+        
+        let mKey = 'm' + currentStage;
+        if(img(mKey)) ctx.drawImage(images[mKey], 480, 310);
+        
+        // 8. 底部進度條
+        // Mission: Get Crystals
+        ctx.font = "20px 'Comic Sans MS', Arial";
+        ctx.fillText("Mission: Get Crystals", 120, 532);
+        
+        // Stage 1
+        ctx.fillText("Stage1", 60, 590);
+        if(img('c1')) ctx.drawImage(images['c1'], 100, 548);
+        
+        ctx.fillText("-> Stage2", 210, 590);
+        if(img('c2')) ctx.drawImage(images['c2'], 260, 558);
+        
+        ctx.fillText("-> Stage3", 375, 590);
+        if(img('c3')) ctx.drawImage(images['c3'], 425, 558);
+        
+        ctx.fillText("-> Stage4", 540, 590);
+        if(img('c4')) ctx.drawImage(images['c4'], 590, 548);
+        
+        ctx.fillText("-> Stage5", 710, 590);
+        if(img('c5')) ctx.drawImage(images['c5'], 760, 558);
+
+        // 9. 按鈕 (繪製在 Canvas 上)
+        // Start/Stage Button: (552, 460), 100x50
+        drawButton("Stage" + currentStage, 552, 460, 100, 50, "#00ff00");
+        
+        // Quit Button: (720, 460), 100x50
+        drawButton("Quit", 720, 460, 100, 50, "#ff0000");
+
+        // 10. 勝利/失敗 覆蓋層
+        if (overrideMsg === 'victory') {
+             if(img('victory')) ctx.drawImage(images['victory'], 50, 100);
+        }
+        if (overrideMsg === 'defeat') {
+             if(img('defeat')) ctx.drawImage(images['defeat'], 50, 50);
+        }
+    }
+    
+    function drawButton(text, x, y, w, h, color) {
+        ctx.fillStyle = color;
+        ctx.fillRect(x, y, w, h);
+        ctx.fillStyle = "black";
+        ctx.font = "20px Arial";
+        ctx.textAlign = "center";
+        ctx.fillText(text, x + w/2, y + h/2 + 7);
+    }
+    
+    function img(key) { return images[key] && images[key].complete; }
+
+    // === 動畫系統 ===
+    function playAnimations() {
+        if (animationQueue.length === 0) {
+            isAnimating = false;
+            log("---" + "動作結束" + "---");
+            document.getElementById('btn-run').textContent = "▶ 執行程式 (Run)";
+            document.getElementById('btn-run').disabled = false;
+            
+            // 檢查是否過關，如果是，自動切換到下一關的程式碼
+            // 注意：這裡是動畫播放完畢，表示角色已經執行完當前指令
+            // 實際的 stage 切換應該由使用者點擊按鈕或自動觸發
+            // 我們這裡可以檢查如果最後一個動作是 'get' 並且成功收集，是否要提示
+            return;
+        }
+        isAnimating = true;
+        
+        const action = animationQueue.shift();
+        
+        if (action.type === 'move') {
+            d_row = action.row; d_col = action.col;
+            drawGame();
+            setTimeout(playAnimations, 300); 
+        } else if (action.type === 'turn') {
+            d_dir = action.dir;
+            drawGame();
+            setTimeout(playAnimations, 200); 
+        } else if (action.type === 'get') {
+            // 從畫面移除水晶
+            d_crystals_on_map = d_crystals_on_map.filter(p => !(p[0] === action.row && p[1] === action.col));
+            d_crystals_collected++; // 在動畫播放時才增加視覺數量
+            
+            audio['get'].play().catch(e => {});
+            drawGame();
+            
+            // 如果剛剛撿到的是該關卡目標，則觸發勝利動畫
+            // 檢查是否還有動作？通常 get_crystal 是最後一步
+            setTimeout(playAnimations, 500);
+            
+        } else if (action.type === 'stage_clear') {
+            // 小關卡過關：不顯示 Victory 圖片，只進入下一關
+            log("--- 關卡完成！準備進入下一關 ---");
+            isAnimating = false;
+            document.getElementById('btn-run').textContent = "▶ 執行程式 (Run)";
+            document.getElementById('btn-run').disabled = false;
+
+            // 自動切換到下一關代碼
+            setTimeout(() => {
+                let nextStage = d_crystals_collected + 1; // 使用 d_ 比較準確
+                if(nextStage <= 5) {
+                    updateEditorContent(nextStage);
+                    log(`>>> 進入 Stage ${nextStage} <<<`);
+                }
+            }, 1000);
+
+        } else if (action.type === 'crash') {
+            audio['knock'].play().catch(e => {});
+            drawGame('defeat');
+            isAnimating = false;
+            document.getElementById('btn-run').textContent = "▶ 執行程式 (Run)";
+            document.getElementById('btn-run').disabled = false;
+        } else if (action.type === 'fail') {
+            audio['fail'].play().catch(e => {});
+            drawGame('defeat');
+            isAnimating = false;
+            document.getElementById('btn-run').textContent = "▶ 執行程式 (Run)";
+            document.getElementById('btn-run').disabled = false;
+        } else if (action.type === 'win') {
+            audio['victory'].play().catch(e => {});
+            drawGame('victory');
+            // 全破！
+            isAnimating = false;
+            document.getElementById('btn-run').textContent = "▶ 執行程式 (Run)";
+            document.getElementById('btn-run').disabled = false;
+            log("=== 恭喜！遊戲全部通關 === !");
+        }
+    }
+
+    // === Canvas 點擊事件 (處理按鈕) ===
+    canvas.onclick = function(event) {
+        const rect = canvas.getBoundingClientRect();
+        const x = event.clientX - rect.left;
+        const y = event.clientY - rect.top;
+        
+        // Stage Button: (552, 460), 100x50
+        if (x >= 552 && x <= 652 && y >= 460 && y <= 510) {
+            // 這是 "執行" 或 "進入下一關" 的按鈕？
+            // 在原版遊戲中，這按鈕是 "Start" 或 "Stage X"。
+            // 點擊後應該執行目前的程式碼。
+            runPython();
+        }
+        
+        // Quit Button: (720, 460), 100x50
+        if (x >= 720 && x <= 820 && y >= 460 && y <= 510) {
+            // 這裡的 Quit 可以定義為重置
+            if(confirm("確定要放棄並重新開始嗎？")) {
+                fullReset();
+            }
+        }
+    };
+
+    // === Python 介接 ===
+    var editor = CodeMirror.fromTextArea(document.getElementById("code"), {
+        mode: {name: "python", version: 3, singleLineStringErrors: false},
+        theme: "dracula",
+        lineNumbers: true,
+        indentUnit: 4,
+        matchBrackets: true,
+        extraKeys: {
+            "Tab": function(cm) {
+                if (cm.somethingSelected()) {
+                    cm.indentSelection("add");
+                } else {
+                    cm.replaceSelection("    ", "end");
+                }
+            }
+        }
+    });
+    
+    function builtinRead(x) {
+        if (Sk.builtinFiles === undefined || Sk.builtinFiles["files"][x] === undefined)
+            throw "File not found: '" + x + "'";
+        return Sk.builtinFiles["files"][x];
+    }
+    
+    // 輔助 return
+    function sk_none() { return Sk.builtin.none.none$; }
+    function sk_bool(b) { return new Sk.builtin.bool(b); }
+    function sk_int(n) { return new Sk.builtin.int_(n); }
+
+    function runPython() {
+        if (isAnimating) return;
+        
+        prepareRun();
+        document.getElementById('btn-run').textContent = "執行中...";
+        document.getElementById('btn-run').disabled = true;
+
+        var prog = editor.getValue();
+        var currentStage = v_crystals_collected + 1;
+        var funcName = "stage" + currentStage;
+        
+        // 強制附加呼叫
+        var runCode = prog + "\n\n";
+        runCode += "if '" + funcName + "' in globals():\n";
+        runCode += "    " + funcName + "()\n";
+        
+        log(`--- 執行 Stage ${currentStage} ---`);
+
+        Sk.configure({
+            output: log,
+            read: builtinRead,
+            syspath: ["skulpt-stdlib"],
+            retries: -1
+        });
+
+        // 定義 API (包含邏輯檢查)
+        Sk.builtins.move_forward = new Sk.builtin.func(function() {
+            try {
+                let nr = v_row, nc = v_col;
+                if (v_dir === 0) nr--; else if (v_dir === 1) nc++; else if (v_dir === 2) nr++; else if (v_dir === 3) nc--;
+                
+                let is_wall = false;
+                if (nr < 0 || nr >= 8 || nc < 0 || nc >= 8) is_wall = true;
+                else if (mapData[nr][nc] === 0) is_wall = true;
+
+                if (is_wall) {
+                    animationQueue.push({type: 'crash'});
+                } else {
+                    v_row = nr; v_col = nc;
+                    animationQueue.push({type: 'move', row: v_row, col: v_col});
+                }
+                return sk_none();
+            } catch(e) { console.error(e); throw e; }
+        });
+
+        Sk.builtins.turn_left = new Sk.builtin.func(function() {
+            v_dir = (v_dir - 1 + 4) % 4;
+            animationQueue.push({type: 'turn', dir: v_dir});
+            return sk_none();
+        });
+
+        Sk.builtins.turn_right = new Sk.builtin.func(function() {
+            v_dir = (v_dir + 1) % 4;
+            animationQueue.push({type: 'turn', dir: v_dir});
+            return sk_none();
+        });
+
+        Sk.builtins.get_crystal = new Sk.builtin.func(function() {
+            let foundIndex = v_crystals_on_map.findIndex(p => p[0] === v_row && p[1] === v_col);
+            if (foundIndex !== -1) {
+                // 檢查是否是目標水晶 (原本遊戲邏輯是按順序收集)
+                // 這裡簡化為：只要有水晶就能拿，但拿到後檢查是否為第5顆
+                v_crystals_on_map.splice(foundIndex, 1);
+                v_crystals_collected++;
+                animationQueue.push({type: 'get', row: v_row, col: v_col});
+                
+                // 檢查是否全破 (5顆水晶)
+                if (v_crystals_collected === 5) {
+                    animationQueue.push({type: 'win'}); 
+                } else {
+                    // 中途過關，加入過渡動畫
+                    animationQueue.push({type: 'stage_clear'});
+                }
+            } else {
+                animationQueue.push({type: 'fail'});
+            }
+            return sk_none();
+        });
+        
+        Sk.builtins.is_forward_path = new Sk.builtin.func(function() {
+            let nr = v_row, nc = v_col;
+            if (v_dir === 0) nr--; else if (v_dir === 1) nc++; else if (v_dir === 2) nr++; else if (v_dir === 3) nc--;
+            if (nr < 0 || nr >= 8 || nc < 0 || nc >= 8) return sk_int(0);
+            return sk_int(mapData[nr][nc]);
+        });
+        
+        Sk.builtins.reach_crystal = new Sk.builtin.func(function() {
+            let found = v_crystals_on_map.some(p => p[0] === v_row && p[1] === v_col);
+            return sk_bool(found);
+        });
+
+        Sk.misceval.asyncToPromise(function() {
+            return Sk.importMainWithBody("<stdin>", false, runCode, true);
+        }).then(function(mod) {
+            log("Python 執行完畢");
+            playAnimations();
+        }, function(err) {
+            log("[錯誤] " + err.toString());
+            document.getElementById('btn-run').textContent = "▶ 執行程式 (Run)";
+            document.getElementById('btn-run').disabled = false;
+        });
+    }
+
+    const levels = {
+        1: "def stage1():\n    # 第一關: 練習基本移動\n    # 任務: 走到紅色水晶處並取得它。\n    move_forward()\n    get_crystal()",
+        2: "def stage2():\n    # 第二關: 取得橙色水晶\n    # 提示: 需要轉彎\n    pass",
+        3: "def stage3():\n    # 第三關: 迴圈概念\n    pass",
+        4: "def stage4():\n    # 第四關: 條件判斷\n    pass",
+        5: "def stage5():\n    # 第五關: 綜合挑戰\n    pass"
+    };
+
+    function updateEditorContent(level) {
+        document.getElementById('level-indicator').textContent = "Stage " + level;
+        
+        // 只有當編輯器內容為空或還是上一關的預設代碼時才覆蓋？
+        // 為了簡單，這裡直接覆蓋，但在實際產品中可能要小心不要清除使用者的代碼
+        // 這裡我們假設每關代碼是獨立的
+        editor.setValue(levels[level] || "#恭喜通關！");
+    }
+
+    window.onload = loadAssets;
+
+</script>
+</body>
+</html>
