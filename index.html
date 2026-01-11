@@ -527,11 +527,11 @@
     }
 
     const levels = {
-        1: "def stage1():\n    # 第一關: 練習基本移動\n    # 任務: 走到紅色水晶處並取得它。\n    move_forward()\n    get_crystal()",
-        2: "def stage2():\n    # 第二關: 取得橙色水晶\n    # 提示: 需要轉彎\n    pass",
-        3: "def stage3():\n    # 第三關: 迴圈概念\n    pass",
-        4: "def stage4():\n    # 第四關: 條件判斷\n    pass",
-        5: "def stage5():\n    # 第五關: 綜合挑戰\n    pass"
+        1: "def stage1():\n    # Stage 1: 基礎移動\n    # 任務：幫主角走到紅色水晶的位置，然後撿起來！\n    # \n    # 指令介紹：\n    # move_forward()  # 向前走一格\n    # get_crystal()   # 撿起腳下的水晶\n    \n    move_forward()\n    # 請在下面多加幾行指令，走到水晶上面...\n    get_crystal()",
+        2: "def stage2():\n    # Stage 2: 轉彎與迴圈\n    # 任務：走到橙色水晶並撿起來。路徑變彎了！\n    # \n    # 新指令：\n    # turn_right()  # 向右轉\n    # turn_left()   # 向左轉\n    # \n    # [進階技巧] 懶得寫那麼多行？試試 for 迴圈：\n    # for i in range(3):  # 下面縮排的程式會重複執行 3 次\n    #     move_forward()\n    pass",
+        3: "def stage3():\n    # Stage 3: 規律的路徑 (雙層迴圈)\n    # 任務：取得綠色水晶。觀察一下路徑，是不是有規律呢？\n    # \n    # [基礎解法] 慢慢寫 move_forward() 和 turn_right() 直到終點。\n    # \n    # [高手解法] 巢狀迴圈 (迴圈裡面還有迴圈)\n    # for i in range(2):      # 重複執行「走一段路+轉彎」的動作 2 次\n    #     for j in range(3):  # 每次走 3 步\n    #         move_forward()\n    #     turn_right()\n    pass",
+        4: "def stage4():\n    # Stage 4: 聰明的探險家 (條件判斷)\n    # 任務：取得藍色水晶。\n    # 這一關直線好長，數格子好累... 有沒有聰明的方法？\n    # \n    # [感測器] is_forward_path() \n    # 如果前方有路會回傳 1 (True)，撞牆會回傳 0 (False)。\n    # \n    # [高手解法] 使用 while (當...的時候)\n    # while is_forward_path():  # 當「前方還有路」的時候...\n    #     move_forward()        # ...就一直走，直到撞牆為止\n    pass",
+        5: "def stage5():\n    # Stage 5: 最終考驗\n    # 任務：取得最後的黑色水晶！\n    # 這是最後一關了，綜合使用你學過的所有技巧吧！\n    # \n    # 複習一下指令：\n    # move_forward()\n    # turn_right() / turn_left()\n    # get_crystal()\n    # \n    # 判斷與迴圈：\n    # if reach_crystal():   # 如果腳下有水晶...\n    # while is_forward_path(): # 當前方有路...\n    # for i in range(5):    # 重複 5 次...\n    pass"
     };
 
     function updateEditorContent(level) {
