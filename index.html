@@ -45,7 +45,8 @@
         <textarea id="code">def stage1():
     # 第一關: 練習基本移動
     # 任務: 走到紅色水晶處並取得它。
-    
+    move_forward()
+    get_crystal()
 </textarea>
         <div id="controls">
             <button id="btn-run" onclick="runPython()">▶ 執行程式 (Run)</button>
@@ -526,11 +527,11 @@
     }
 
     const levels = {
-        1: "def stage1():\n    # Stage 1: 基礎移動\n    # 任務：幫主角走到紅色水晶的位置，然後撿起來！\n    # \n    # 提示：\n    # 使用 move_forward() 向前走\n    # 到了之後用 get_crystal() 撿起來\n    \n    move_forward()\n    get_crystal()",
+        1: "def stage1():\n    # Stage 1: 基礎移動\n    # 任務：幫主角走到紅色水晶的位置，然後撿起來！\n    # \n    # 提示：\n    # 使用 move_forward() 向前走\n    # 到了之後用 get_crystal() 撿起來\n    ",
         2: "def stage2():\n    # Stage 2: 轉彎與迴圈\n    # 任務：走到橙色水晶並撿起來。\n    # \n    # 提示：\n    # [基礎] 一步一步寫指令走到終點。\n    # [進階] 發現有重複的動作嗎？試試看用「for 迴圈」讓電腦幫你重複執行，程式碼會變短喔！\n    pass",
-        3: "def stage3():\n    # Stage 3: 規律的路徑\n    # 任務：取得綠色水晶。\n    # \n    # 提示：\n    # [基礎] 數數看有幾格，用 for 迴圈走過去。\n    # [進階] 觀察路徑，是不是有「走一段路 + 轉彎」的形狀重複出現呢？\n    #       試試看用「雙層迴圈」(迴圈裡面包著迴圈) 來解決！\n    pass",
-        4: "def stage4():\n    # Stage 4: 聰明的探險家\n    # 任務：取得藍色水晶。\n    # \n    # 提示：\n    # [基礎] 數數看有幾格，用 for 迴圈走過去。\n    # [進階] 直線太長懶得數？試試看「while 迴圈」(當...的時候)\n    #       搭配「is_forward_path() 感測器」，讓主角自己判斷「前方有路就一直走」！\n    pass",
-        5: "def stage5():\n    # Stage 5: 最終考驗\n    # 任務：取得最後的黑色水晶！\n    # \n    # 提示：\n    # 這是最後一關了！\n    # 請綜合使用你學過的「if 判斷」和各種「迴圈技巧」來完成任務吧！\n    pass"
+        3: "def stage3():\n    # Stage 3: 規律的路徑\n    # 任務：取得綠色水晶。\n    # \n    # 提示：\n    # [基礎] 數數看有幾格，用 for 迴圈走過去。\n    # [進階] 觀察路徑，是不是有「走一段路 + 轉彎」的形狀重複出現呢？\n    #       試試看用「雙層迴圈」(迴圈裡面包著迴圈) 來解決！\n    ",
+        4: "def stage4():\n    # Stage 4: 聰明的探險家\n    # 任務：取得藍色水晶。\n    # \n    # 提示：\n    # [基礎] 數數看有幾格，用 for 迴圈走過去。\n    # [進階] 直線太長懶得數？試試看「while 迴圈」(當...的時候)\n    #       搭配「is_forward_path() 感測器」，讓主角自己判斷「前方有路就一直走」！\n    ",
+        5: "def stage5():\n    # Stage 5: 最終考驗\n    # 任務：取得最後的黑色水晶！\n    # \n    # 提示：\n    # 這是最後一關了！\n    # 請綜合使用你學過的「if 判斷」和各種「迴圈技巧」來完成任務吧！\n    "
     };
 
     function updateEditorContent(level) {
