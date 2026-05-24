@@ -30,9 +30,30 @@
         canvas { background: #000; box-shadow: 0 0 20px rgba(0,0,0,0.5); border-radius: 4px; cursor: pointer;}
         #output { height: 120px; background: #000; color: #0f0; padding: 10px; overflow-y: auto; font-family: monospace; margin-top: 10px; border-radius: 5px; border: 1px solid #555; white-space: pre-wrap;}
         
-        #level-indicator { margin-bottom: 10px; padding: 5px; font-size: 18px; color: yellow; font-weight: bold; }
+        #level-indicator { padding: 5px; font-size: 18px; color: yellow; font-weight: bold; }
         
         #loader { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); display: flex; justify-content: center; align-items: center; z-index: 10; font-size: 24px; color: white; display: none;}
+
+        /* 關卡選擇列 */
+        #stage-selector { display: flex; gap: 6px; margin: 8px 0; flex-wrap: wrap; }
+        .btn-stage { 
+            padding: 6px 10px; font-size: 13px; border-radius: 6px; 
+            background: #4a6274; color: #ccc; border: 2px solid transparent;
+            cursor: pointer; font-weight: bold; transition: all 0.2s; flex: 1;
+        }
+        .btn-stage:hover { background: #5d7a8a; color: white; }
+        .btn-stage.active { background: #2980b9; color: white; border-color: #5dade2; box-shadow: 0 0 8px rgba(93,173,226,0.5); }
+        .btn-stage.completed { background: #1e8449; color: #afffaf; border-color: #27ae60; }
+        .btn-stage.completed.active { background: #27ae60; border-color: #afffaf; }
+
+        /* 重試本關按鈕 */
+        #btn-retry { background-color: #e67e22; }
+        #btn-retry:hover { background-color: #f39c12; }
+
+        /* 從頭開始（危險操作） */
+        #danger-zone { margin-top: 6px; display: flex; justify-content: flex-end; }
+        #btn-full-reset { background-color: #7f8c8d; font-size: 12px; padding: 5px 10px; opacity: 0.7; }
+        #btn-full-reset:hover { background-color: #c0392b; opacity: 1; }
     </style>
 </head>
 <body>
@@ -42,15 +63,24 @@
             <h2>程式碼編輯區</h2>
             <span id="level-indicator">Stage 1</span>
         </div>
-        <textarea id="code">def stage1():
-    # 第一關: 練習基本移動
-    # 任務: 走到紅色水晶處並取得它。
-    move_forward()
-    get_crystal()
-</textarea>
+
+        <!-- 關卡選擇列 -->
+        <div id="stage-selector">
+            <button class="btn-stage active" id="sbtn-1" onclick="selectStage(1)">⭐ S1</button>
+            <button class="btn-stage" id="sbtn-2" onclick="selectStage(2)">🔒 S2</button>
+            <button class="btn-stage" id="sbtn-3" onclick="selectStage(3)">🔒 S3</button>
+            <button class="btn-stage" id="sbtn-4" onclick="selectStage(4)">🔒 S4</button>
+            <button class="btn-stage" id="sbtn-5" onclick="selectStage(5)">🔒 S5</button>
+        </div>
+
+        <textarea id="code"></textarea>
+
         <div id="controls">
             <button id="btn-run" onclick="runPython()">▶ 執行程式 (Run)</button>
-            <button id="btn-reset" onclick="fullReset()">↺ 重新開始 (Restart)</button>
+            <button id="btn-retry" onclick="retryCurrentStage()">↺ 重試本關</button>
+        </div>
+        <div id="danger-zone">
+            <button id="btn-full-reset" onclick="confirmFullReset()">⚠ 從頭開始</button>
         </div>
         <div id="output">系統準備就緒...</div>
     </div>
@@ -74,10 +104,25 @@
     // 視覺狀態 (Display State - 動畫繪圖用)
     let d_row = 4, d_col = 3, d_dir = 0;
     let d_crystals_on_map = [];
-    let d_crystals_collected = 0; // 新增：視覺上的收集數量
+    let d_crystals_collected = 0;
     
     let animationQueue = [];
     let isAnimating = false;
+
+    // === 關卡選擇 & 程式碼記憶 ===
+    let currentStageNum = 1;   // 目前顯示的關卡
+    let maxUnlockedStage = 1;  // 已解鎖到哪關
+
+    // 每關各自儲存的程式碼（會記住學生修改）
+    let userCodes = {};
+
+    // 每關的起始遊戲狀態（供重試本關用）
+    // 記錄每關過關時角色的位置（方案A：動態記錄，非寫死）
+    // key = 關卡編號，value = 過關瞬間的 { row, col, dir }
+    // Stage 1 的起點固定；其餘關卡由過關時自動記錄
+    let stageEndPositions = {
+        0: { row: 4, col: 3, dir: 0 }  // Stage 1 起始點
+    };
     
     // 地圖與水晶設定
     let mapData = [
@@ -139,23 +184,99 @@
     function checkLoadComplete() {
         if (assetsLoaded === totalAssets) {
             document.getElementById('loader').style.display = 'none';
-            fullReset(); // 初始啟動
+            // 初始啟動：套用 Stage 1 起始狀態
+            _applyStageState(1);
+            updateEditorContent(1);
+            updateStageSelectorUI();
+            drawGame();
+            log("系統準備就緒，歡迎來到水晶遊戲！");
         }
     }
 
     // === 遊戲核心邏輯 ===
     
-    // 完全重置 (回到 Stage 1)
+    // 完全重置 (回到 Stage 1，清除所有記憶)
     function fullReset() {
-        v_row = 4; v_col = 3; v_dir = 0; 
-        v_crystals_collected = 0;
-        v_crystals_on_map = JSON.parse(JSON.stringify(initialCrystalSet));
-        
-        d_crystals_collected = 0; // 重置視覺計數
-        syncDisplayState();
+        userCodes = {};  // 清除所有儲存的程式碼
+        stageEndPositions = { 0: { row: 4, col: 3, dir: 0 } };  // 重置過關位置記錄
+        maxUnlockedStage = 1;
+        currentStageNum = 1;
+        _applyStageState(1);
         updateEditorContent(1);
+        updateStageSelectorUI();
         drawGame();
-        log("遊戲已重新開始 (Stage 1)");
+        log("遊戲已完全重置 (Stage 1)");
+    }
+
+    // 確認後才完全重置
+    function confirmFullReset() {
+        if (confirm("⚠ 確定要從頭開始嗎？\n所有關卡的程式碼與進度都會清除！")) {
+            fullReset();
+        }
+    }
+
+    // 選擇關卡（儲存目前編輯器內容，再切換）
+    function selectStage(stageNum) {
+        if (stageNum > maxUnlockedStage) {
+            log(`Stage ${stageNum} 尚未解鎖，請先完成前面的關卡！`);
+            return;
+        }
+        if (isAnimating) return;
+
+        // 儲存目前關卡的程式碼
+        userCodes[currentStageNum] = editor.getValue();
+
+        // 切換關卡
+        currentStageNum = stageNum;
+        _applyStageState(stageNum);
+        updateEditorContent(stageNum);
+        updateStageSelectorUI();
+        drawGame();
+        log(`>>> 切換到 Stage ${stageNum} <<<`);
+    }
+
+    // 重試本關（只重置當關狀態，保留程式碼）
+    function retryCurrentStage() {
+        if (isAnimating) return;
+        userCodes[currentStageNum] = editor.getValue(); // 先存程式碼
+        _applyStageState(currentStageNum);
+        syncDisplayState();
+        drawGame();
+        log(`↺ 重試 Stage ${currentStageNum}`);
+    }
+
+    // 套用指定關卡的起始遊戲狀態（使用動態記錄的過關位置）
+    function _applyStageState(stageNum) {
+        const collected = stageNum - 1;  // 第N關開始時已收集 N-1 顆
+        // 用「前一關過關時的位置」當起點；若沒有記錄則用預設點
+        const pos = stageEndPositions[stageNum - 1] || { row: 4, col: 3, dir: 0 };
+        v_row = pos.row; v_col = pos.col; v_dir = pos.dir;
+        v_crystals_collected = collected;
+        // 水晶地圖：只保留尚未收集的水晶
+        v_crystals_on_map = JSON.parse(JSON.stringify(initialCrystalSet)).slice(collected);
+        d_crystals_collected = collected;
+        syncDisplayState();
+    }
+
+    // 更新關卡選擇按鈕 UI
+    function updateStageSelectorUI() {
+        for (let i = 1; i <= 5; i++) {
+            const btn = document.getElementById('sbtn-' + i);
+            if (!btn) continue;
+            btn.classList.remove('active', 'completed');
+            if (i < maxUnlockedStage) {
+                btn.classList.add('completed');
+                btn.textContent = `✅ S${i}`;
+            } else if (i === maxUnlockedStage && i !== currentStageNum) {
+                btn.textContent = `⭐ S${i}`;
+            } else if (i > maxUnlockedStage) {
+                btn.textContent = `🔒 S${i}`;
+            } else {
+                btn.textContent = `⭐ S${i}`;
+            }
+            if (i === currentStageNum) btn.classList.add('active');
+        }
+        document.getElementById('level-indicator').textContent = "Stage " + currentStageNum;
     }
 
     // 同步視覺狀態與邏輯狀態 (在非動畫期間使用)
@@ -333,18 +454,25 @@
             setTimeout(playAnimations, 500);
             
         } else if (action.type === 'stage_clear') {
-            // 小關卡過關：不顯示 Victory 圖片，只進入下一關
+            // 小關卡過關：解鎖下一關
             log("--- 關卡完成！準備進入下一關 ---");
             isAnimating = false;
             document.getElementById('btn-run').textContent = "▶ 執行程式 (Run)";
             document.getElementById('btn-run').disabled = false;
 
-            // 自動切換到下一關代碼
+            // 儲存目前關卡程式碼，解鎖並切換到下一關
             setTimeout(() => {
-                let nextStage = d_crystals_collected + 1; // 使用 d_ 比較準確
-                if(nextStage <= 5) {
+                let nextStage = d_crystals_collected + 1;
+                if (nextStage <= 5) {
+                    // 儲存目前關卡程式碼
+                    userCodes[currentStageNum] = editor.getValue();
+                    // 解鎖下一關
+                    if (nextStage > maxUnlockedStage) maxUnlockedStage = nextStage;
+                    currentStageNum = nextStage;
+                    _applyStageState(nextStage);
                     updateEditorContent(nextStage);
-                    log(`>>> 進入 Stage ${nextStage} <<<`);
+                    updateStageSelectorUI();
+                    log(`>>> 解鎖並進入 Stage ${nextStage} <<<`);
                 }
             }, 1000);
 
@@ -431,7 +559,7 @@
         document.getElementById('btn-run').disabled = true;
 
         var prog = editor.getValue();
-        var currentStage = v_crystals_collected + 1;
+        var currentStage = currentStageNum;  // 使用選擇的關卡，不依賴收集數
         var funcName = "stage" + currentStage;
         
         // 強制附加呼叫
@@ -441,16 +569,27 @@
         
         log(`--- 執行 Stage ${currentStage} ---`);
 
+        // 全域步驟計數器，防止 while True 卡死
+        let stepCount = 0;
+        const MAX_STEPS = 200;
+
         Sk.configure({
             output: log,
             read: builtinRead,
             syspath: ["skulpt-stdlib"],
-            retries: -1
+            retries: -1,
+            execLimit: 5000  // 最多執行5000個指令，防止無限迴圈卡死
         });
 
         // 定義 API (包含邏輯檢查)
         Sk.builtins.move_forward = new Sk.builtin.func(function() {
             try {
+                stepCount++;
+                if (stepCount > MAX_STEPS || animationQueue.length > 500) {
+                    animationQueue.push({type: 'fail'});
+                    log("[錯誤] 指令數量過多，可能有無限迴圈！");
+                    return sk_none();
+                }
                 let nr = v_row, nc = v_col;
                 if (v_dir === 0) nr--; else if (v_dir === 1) nc++; else if (v_dir === 2) nr++; else if (v_dir === 3) nc--;
                 
@@ -469,12 +608,24 @@
         });
 
         Sk.builtins.turn_left = new Sk.builtin.func(function() {
+            stepCount++;
+            if (stepCount > MAX_STEPS || animationQueue.length > 500) {
+                animationQueue.push({type: 'fail'});
+                log("[錯誤] 指令數量過多，可能有無限迴圈！");
+                return sk_none();
+            }
             v_dir = (v_dir - 1 + 4) % 4;
             animationQueue.push({type: 'turn', dir: v_dir});
             return sk_none();
         });
 
         Sk.builtins.turn_right = new Sk.builtin.func(function() {
+            stepCount++;
+            if (stepCount > MAX_STEPS || animationQueue.length > 500) {
+                animationQueue.push({type: 'fail'});
+                log("[錯誤] 指令數量過多，可能有無限迴圈！");
+                return sk_none();
+            }
             v_dir = (v_dir + 1) % 4;
             animationQueue.push({type: 'turn', dir: v_dir});
             return sk_none();
@@ -489,6 +640,9 @@
                 v_crystals_collected++;
                 animationQueue.push({type: 'get', row: v_row, col: v_col});
                 
+                // 記錄本關過關時角色位置（供下一關跳關使用）
+                stageEndPositions[v_crystals_collected] = { row: v_row, col: v_col, dir: v_dir };
+
                 // 檢查是否全破 (5顆水晶)
                 if (v_crystals_collected === 5) {
                     animationQueue.push({type: 'win'}); 
@@ -528,19 +682,17 @@
 
     const levels = {
         1: "def stage1():\n    # Stage 1: 基礎移動\n    # 任務：幫主角走到紅色水晶的位置，然後撿起來！\n    # \n    # 提示：\n    # 使用 move_forward() 向前走\n    # 到了之後用 get_crystal() 撿起來\n    ",
-        2: "def stage2():\n    # Stage 2: 轉彎與迴圈\n    # 任務：走到橙色水晶並撿起來。\n    # \n    # 提示：\n    # [基礎] 一步一步寫指令走到終點。\n    # [進階] 發現有重複的動作嗎？試試看用「for 迴圈」讓電腦幫你重複執行，程式碼會變短喔！\n    pass",
+        2: "def stage2():\n    # Stage 2: 轉彎與迴圈\n    # 任務：走到橙色水晶並撿起來。\n    # \n    # 提示：\n    # [基礎] 一步一步寫指令走到終點。\n    # [進階] 發現有重複的動作嗎？試試看用「for 迴圈」讓電腦幫你重複執行，程式碼會變短喔！\n    ",
         3: "def stage3():\n    # Stage 3: 規律的路徑\n    # 任務：取得綠色水晶。\n    # \n    # 提示：\n    # [基礎] 數數看有幾格，用 for 迴圈走過去。\n    # [進階] 觀察路徑，是不是有「走一段路 + 轉彎」的形狀重複出現呢？\n    #       試試看用「雙層迴圈」(迴圈裡面包著迴圈) 來解決！\n    ",
         4: "def stage4():\n    # Stage 4: 聰明的探險家\n    # 任務：取得藍色水晶。\n    # \n    # 提示：\n    # [基礎] 數數看有幾格，用 for 迴圈走過去。\n    # [進階] 直線太長懶得數？試試看「while 迴圈」(當...的時候)\n    #       搭配「is_forward_path() 感測器」，讓主角自己判斷「前方有路就一直走」！\n    ",
         5: "def stage5():\n    # Stage 5: 最終考驗\n    # 任務：取得最後的黑色水晶！\n    # \n    # 提示：\n    # 這是最後一關了！\n    # 請綜合使用你學過的「if 判斷」和各種「迴圈技巧」來完成任務吧！\n    "
     };
 
     function updateEditorContent(level) {
-        document.getElementById('level-indicator').textContent = "Stage " + level;
-        
-        // 只有當編輯器內容為空或還是上一關的預設代碼時才覆蓋？
-        // 為了簡單，這裡直接覆蓋，但在實際產品中可能要小心不要清除使用者的代碼
-        // 這裡我們假設每關代碼是獨立的
-        editor.setValue(levels[level] || "#恭喜通關！");
+        // 優先使用學生儲存的程式碼，否則用預設範本
+        const code = userCodes[level] !== undefined ? userCodes[level] : (levels[level] || "# 恭喜通關！");
+        editor.setValue(code);
+        updateStageSelectorUI();
     }
 
     window.onload = loadAssets;
