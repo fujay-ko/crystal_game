@@ -12,48 +12,179 @@
     <script src="lib/skulpt-stdlib.js"></script>
 
     <style>
-        body { font-family: 'Comic Sans MS', '微軟正黑體', sans-serif; background-color: #2c3e50; margin: 0; display: flex; height: 100vh; color: white; overflow: hidden; }
-        #left-panel { width: 35%; display: flex; flex-direction: column; padding: 10px; box-sizing: border-box; background: #34495e; border-right: 2px solid #2c3e50; }
-        #right-panel { width: 65%; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #222; position: relative; }
-        
+        /* ===== Reset & Base ===== */
+        * { box-sizing: border-box; }
+        body {
+            font-family: 'Comic Sans MS', '微軟正黑體', sans-serif;
+            background-color: #2c3e50;
+            margin: 0; display: flex; height: 100vh;
+            color: white; overflow: hidden;
+        }
+
+        /* ===== Layout ===== */
+        #left-panel {
+            width: 35%; display: flex; flex-direction: column;
+            padding: 10px; box-sizing: border-box;
+            background: #34495e; border-right: 2px solid #2c3e50;
+        }
+        #right-panel {
+            width: 65%; display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            background: #222; position: relative;
+        }
+
         h2 { margin: 5px 0; font-size: 1.2rem; }
         .CodeMirror { flex-grow: 1; border-radius: 5px; font-size: 16px; }
-        
-        #controls { margin-top: 10px; display: flex; gap: 10px; flex-wrap: wrap;}
-        button { padding: 8px 15px; font-size: 14px; border: none; border-radius: 5px; cursor: pointer; color: white; font-weight: bold; }
-        #btn-run { background-color: #27ae60; flex-grow: 2;}
-        #btn-run:hover { background-color: #2ecc71; }
+
+        #controls { margin-top: 10px; display: flex; gap: 10px; flex-wrap: wrap; }
+        button {
+            padding: 8px 15px; font-size: 14px; border: none;
+            border-radius: 5px; cursor: pointer; color: white; font-weight: bold;
+        }
+        #btn-run { background-color: #27ae60; flex-grow: 2; }
+        #btn-run:hover:not(:disabled) { background-color: #2ecc71; }
+        #btn-run:disabled { opacity: 0.5; cursor: not-allowed; }
         #btn-reset { background-color: #c0392b; }
         #btn-reset:hover { background-color: #e74c3c; }
 
-        /* 讓 Canvas 填滿右側，並保持比例 */
-        canvas { background: #000; box-shadow: 0 0 20px rgba(0,0,0,0.5); border-radius: 4px; cursor: pointer;}
-        #output { height: 120px; background: #000; color: #0f0; padding: 10px; overflow-y: auto; font-family: monospace; margin-top: 10px; border-radius: 5px; border: 1px solid #555; white-space: pre-wrap;}
-        
-        #level-indicator { padding: 5px; font-size: 18px; color: yellow; font-weight: bold; }
-        
-        #loader { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); display: flex; justify-content: center; align-items: center; z-index: 10; font-size: 24px; color: white; display: none;}
+        canvas {
+            background: #000;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+            border-radius: 4px;
+            max-width: 100%;
+            height: auto;
+        }
 
-        /* 關卡選擇列 */
+        #output {
+            height: 120px; background: #000; color: #0f0;
+            padding: 10px; overflow-y: auto; font-family: monospace;
+            margin-top: 10px; border-radius: 5px; border: 1px solid #555;
+            white-space: pre-wrap; font-size: 13px;
+        }
+
+        #level-indicator { padding: 5px; font-size: 18px; color: yellow; font-weight: bold; }
+
+        #loader {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8); display: flex;
+            justify-content: center; align-items: center;
+            z-index: 10; font-size: 24px; color: white; display: none;
+        }
+
+        /* ===== Stage Selector ===== */
         #stage-selector { display: flex; gap: 6px; margin: 8px 0; flex-wrap: wrap; }
-        .btn-stage { 
-            padding: 6px 10px; font-size: 13px; border-radius: 6px; 
+        .btn-stage {
+            padding: 6px 10px; font-size: 13px; border-radius: 6px;
             background: #4a6274; color: #ccc; border: 2px solid transparent;
             cursor: pointer; font-weight: bold; transition: all 0.2s; flex: 1;
         }
         .btn-stage:hover { background: #5d7a8a; color: white; }
-        .btn-stage.active { background: #2980b9; color: white; border-color: #5dade2; box-shadow: 0 0 8px rgba(93,173,226,0.5); }
+        .btn-stage.active {
+            background: #2980b9; color: white;
+            border-color: #5dade2; box-shadow: 0 0 8px rgba(93,173,226,0.5);
+        }
         .btn-stage.completed { background: #1e8449; color: #afffaf; border-color: #27ae60; }
         .btn-stage.completed.active { background: #27ae60; border-color: #afffaf; }
 
-        /* 重試本關按鈕 */
         #btn-retry { background-color: #e67e22; }
         #btn-retry:hover { background-color: #f39c12; }
 
-        /* 從頭開始（危險操作） */
+        #btn-toggle-sound { background-color: #7f8c8d; font-size: 13px; padding: 5px 10px; }
+        #btn-toggle-sound:hover { background-color: #95a5a6; }
+
+        #btn-reset-code { background-color: #8e44ad; font-size: 12px; padding: 5px 10px; }
+        #btn-reset-code:hover { background-color: #9b59b6; }
+
         #danger-zone { margin-top: 6px; display: flex; justify-content: flex-end; }
-        #btn-full-reset { background-color: #7f8c8d; font-size: 12px; padding: 5px 10px; opacity: 0.7; }
+        #btn-full-reset {
+            background-color: #7f8c8d; font-size: 12px;
+            padding: 5px 10px; opacity: 0.7;
+        }
         #btn-full-reset:hover { background-color: #c0392b; opacity: 1; }
+
+        /* ===== Output Header ===== */
+        #output-header {
+            display: flex; justify-content: space-between;
+            align-items: center; margin-top: 6px;
+        }
+        #output-header h2 { margin: 0; font-size: 1rem; }
+        #btn-clear-output {
+            background-color: #555; font-size: 11px;
+            padding: 3px 8px; cursor: pointer; border-radius: 3px;
+        }
+        #btn-clear-output:hover { background-color: #777; }
+
+        #btn-run { display: flex; align-items: center; justify-content: center; gap: 4px; }
+        .key-hint { font-size: 10px; opacity: 0.6; font-weight: normal; }
+
+        /* ===== Canvas Overlay Buttons ===== */
+        #canvas-overlay-buttons {
+            position: absolute; bottom: 10px; right: 10px;
+            display: flex; gap: 8px; z-index: 5;
+        }
+        #canvas-overlay-buttons button {
+            padding: 10px 20px; font-size: 15px; border-radius: 6px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+        }
+        #btn-overlay-run { background-color: #27ae60; }
+        #btn-overlay-run:hover { background-color: #2ecc71; }
+        #btn-overlay-reset { background-color: #e67e22; }
+        #btn-overlay-reset:hover { background-color: #f39c12; }
+
+        /* ===== Stage Clear Overlay ===== */
+        #stage-clear-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.55); display: none;
+            justify-content: center; align-items: center; z-index: 8;
+            pointer-events: none;
+        }
+        #stage-clear-overlay.show { display: flex; }
+        #stage-clear-overlay .msg {
+            font-size: 48px; font-weight: bold; color: #2ecc71;
+            text-shadow: 0 0 30px rgba(46,204,113,0.6);
+            animation: popIn 0.4s ease-out;
+        }
+        @keyframes popIn {
+            0% { transform: scale(0.3); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        /* ===== Newbie Guide ===== */
+        #guide-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.75); display: none;
+            justify-content: center; align-items: center; z-index: 100;
+        }
+        #guide-overlay.show { display: flex; }
+        #guide-box {
+            background: #34495e; border-radius: 12px; padding: 30px;
+            max-width: 480px; text-align: center; box-shadow: 0 0 40px rgba(0,0,0,0.5);
+        }
+        #guide-box h2 { color: #f1c40f; margin-top: 0; }
+        #guide-box p { font-size: 16px; line-height: 1.6; color: #ecf0f1; }
+        #guide-box .step { text-align: left; margin: 12px 0; padding: 10px; background: rgba(255,255,255,0.08); border-radius: 6px; }
+        #guide-box .step .num { display: inline-block; width: 24px; height: 24px; background: #3498db; color: white; border-radius: 50%; text-align: center; line-height: 24px; font-weight: bold; margin-right: 8px; }
+        #btn-guide-start {
+            background: #27ae60; color: white; padding: 12px 30px;
+            font-size: 18px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; margin-top: 10px;
+        }
+        #btn-guide-start:hover { background: #2ecc71; }
+
+        /* ===== Responsive: narrow screens ===== */
+        @media (max-width: 900px) {
+            body { flex-direction: column; overflow-y: auto; }
+            #left-panel { width: 100%; border-right: none; border-bottom: 2px solid #2c3e50; min-height: 50vh; }
+            #right-panel { width: 100%; min-height: 50vh; }
+            canvas { max-width: 100%; height: auto; }
+            #canvas-overlay-buttons { position: fixed; bottom: 10px; right: 10px; }
+        }
+
+        @media (max-width: 500px) {
+            #left-panel { min-height: 40vh; }
+            #right-panel { min-height: 60vh; }
+            #stage-clear-overlay .msg { font-size: 32px; }
+            button { font-size: 12px; padding: 6px 10px; }
+        }
     </style>
 </head>
 <body>
@@ -64,639 +195,77 @@
             <span id="level-indicator">Stage 1</span>
         </div>
 
-        <!-- 關卡選擇列 -->
         <div id="stage-selector">
-            <button class="btn-stage active" id="sbtn-1" onclick="selectStage(1)">⭐ S1</button>
-            <button class="btn-stage" id="sbtn-2" onclick="selectStage(2)">🔒 S2</button>
-            <button class="btn-stage" id="sbtn-3" onclick="selectStage(3)">🔒 S3</button>
-            <button class="btn-stage" id="sbtn-4" onclick="selectStage(4)">🔒 S4</button>
-            <button class="btn-stage" id="sbtn-5" onclick="selectStage(5)">🔒 S5</button>
+            <button class="btn-stage active" id="sbtn-1" onclick="Game.selectStage(1)">⭐ S1</button>
+            <button class="btn-stage" id="sbtn-2" onclick="Game.selectStage(2)">🔒 S2</button>
+            <button class="btn-stage" id="sbtn-3" onclick="Game.selectStage(3)">🔒 S3</button>
+            <button class="btn-stage" id="sbtn-4" onclick="Game.selectStage(4)">🔒 S4</button>
+            <button class="btn-stage" id="sbtn-5" onclick="Game.selectStage(5)">🔒 S5</button>
         </div>
 
         <textarea id="code"></textarea>
 
         <div id="controls">
-            <button id="btn-run" onclick="runPython()">▶ 執行程式 (Run)</button>
-            <button id="btn-retry" onclick="retryCurrentStage()">↺ 重試本關</button>
+            <button id="btn-run" onclick="Game.runPython()">
+                ▶ 執行程式 <span class="key-hint">(Ctrl+Enter)</span>
+            </button>
+            <button id="btn-retry" onclick="Game.retryCurrentStage()">↺ 重試本關</button>
+            <button id="btn-toggle-sound" onclick="Game.toggleSound()">🔊 音效</button>
+            <button id="btn-reset-code" onclick="Game.resetCurrentCode()">↺ 重置程式碼</button>
         </div>
         <div id="danger-zone">
-            <button id="btn-full-reset" onclick="confirmFullReset()">⚠ 從頭開始</button>
+            <button id="btn-full-reset" onclick="Game.confirmFullReset()">⚠ 從頭開始</button>
         </div>
-        <div id="output">系統準備就緒...</div>
+
+        <div id="output-header">
+            <h2>執行輸出</h2>
+            <button id="btn-clear-output" onclick="Game.clearOutput()">🗑 清除</button>
+        </div>
+        <div id="output">系統準備中...</div>
     </div>
 
     <div id="right-panel">
         <canvas id="gameCanvas" width="860" height="640"></canvas>
+
+        <div id="canvas-overlay-buttons">
+            <button id="btn-overlay-run" onclick="Game.runPython()">▶ 執行</button>
+            <button id="btn-overlay-reset" onclick="Game.retryCurrentStage()">↺ 重設</button>
+        </div>
+
+        <div id="stage-clear-overlay">
+            <span class="msg">✓ 關卡通過！</span>
+        </div>
+
         <div id="loader">遊戲資源載入中...</div>
     </div>
 
-<script>
-    // === 全域變數 ===
-    const canvas = document.getElementById('gameCanvas');
-    const ctx = canvas.getContext('2d');
-    const TILE_SIZE = 64;
-    const ASSETS_PATH = './material/';
-    
-    // 遊戲狀態 (Virtual State - Python 邏輯用)
-    let v_row = 4, v_col = 3, v_dir = 0, v_crystals_collected = 0;
-    let v_crystals_on_map = [];
-    
-    // 視覺狀態 (Display State - 動畫繪圖用)
-    let d_row = 4, d_col = 3, d_dir = 0;
-    let d_crystals_on_map = [];
-    let d_crystals_collected = 0;
-    
-    let animationQueue = [];
-    let isAnimating = false;
+    <!-- Newbie Guide Overlay -->
+    <div id="guide-overlay" onclick="Game.hideGuide()">
+        <div id="guide-box" onclick="event.stopPropagation()">
+            <h2>🎮 歡迎來到水晶遊戲！</h2>
+            <p>你將透過撰寫 Python 程式碼，控制角色走迷宮、收集水晶！</p>
+            <div class="step"><span class="num">1</span> 左邊「程式碼編輯區」寫你的程式</div>
+            <div class="step"><span class="num">2</span> 按「▶ 執行程式」或按 <kbd>Ctrl+Enter</kbd> 執行程式</div>
+            <div class="step"><span class="num">3</span> 右邊遊戲畫面會動畫展示角色移動</div>
+            <p style="font-size:14px; color:#bdc3c7; margin-top:16px;">
+                可用指令：move_forward()、turn_left()、turn_right()、<br>
+                get_crystal()、is_forward_path()、reach_crystal()
+            </p>
+            <button id="btn-guide-start" onclick="Game.hideGuide()">開始挑戰！</button>
+        </div>
+    </div>
 
-    // === 關卡選擇 & 程式碼記憶 ===
-    let currentStageNum = 1;   // 目前顯示的關卡
-    let maxUnlockedStage = 1;  // 已解鎖到哪關
+    <!-- JS Modules (load order matters) -->
+    <script src="js/constants.js"></script>
+    <script src="js/utils.js"></script>
+    <script src="js/state.js"></script>
+    <script src="js/assets.js"></script>
+    <script src="js/renderer.js"></script>
+    <script src="js/animation.js"></script>
+    <script src="js/ui.js"></script>
 
-    // 每關各自儲存的程式碼（會記住學生修改）
-    let userCodes = {};
-
-    // 每關的起始遊戲狀態（供重試本關用）
-    // 記錄每關過關時角色的位置（方案A：動態記錄，非寫死）
-    // key = 關卡編號，value = 過關瞬間的 { row, col, dir }
-    // Stage 1 的起點固定；其餘關卡由過關時自動記錄
-    let stageEndPositions = {
-        0: { row: 4, col: 3, dir: 0 }  // Stage 1 起始點
-    };
-    
-    // 地圖與水晶設定
-    let mapData = [
-        [0,0,0,0,0,0,0,0],
-        [0,1,1,1,1,1,1,0],
-        [0,1,0,0,0,0,0,0],
-        [0,1,0,1,1,1,1,0],
-        [0,1,0,1,0,0,1,0],
-        [0,1,0,0,0,0,1,0],
-        [0,1,1,1,1,1,1,0],
-        [0,0,0,0,0,0,0,0]
-    ];
-    // 水晶座標: Red, Orange, Green, Blue, Black
-    const initialCrystalSet = [[3, 3], [3, 6], [6, 3], [4, 1], [1, 6]]; 
-
-    // === 資源載入 ===
-    const images = {};
-    const imageFiles = {
-        'bg': 'bg_1024x768.png', 'bg256': 'bg_256.png',
-        'road': 'road_64.png', 'wall': 'wall_64.png',
-        'c1': 'crystal_red.png', 'c2': 'crystal_orange.png', 'c3': 'crystal_green.png', 'c4': 'crystal_blue.png', 'c5': 'crystal_black.png',
-        'mc0': 'mc0.png', 'mc1': 'mc1.png', 'mc2': 'mc2.png', 'mc3': 'mc3.png',
-        'arrow0': 'arrow0_32.png', 'arrow1': 'arrow1_32.png', 'arrow2': 'arrow2_32.png', 'arrow3': 'arrow3_32.png',
-        'box': 'box_64.png', 'func': 'funs.png',
-        'm1': 'm1.png', 'm2': 'm2.png', 'm3': 'm3.png', 'm4': 'm4.png', 'm5': 'm5.png',
-        'victory': 'victory.png', 'defeat': 'defeat.png'
-    };
-    
-    const audio = {
-        'victory': new Audio(ASSETS_PATH + 'victory.mp3'),
-        'get': new Audio(ASSETS_PATH + 'get.mp3'),
-        'fail': new Audio(ASSETS_PATH + 'fail.mp3'),
-        'knock': new Audio(ASSETS_PATH + 'knock_on_wall.mp3')
-    };
-
-    let assetsLoaded = 0;
-    const totalAssets = Object.keys(imageFiles).length;
-
-    function log(text) {
-        const out = document.getElementById("output");
-        if (out) {
-            out.textContent += text + "\n";
-            out.scrollTop = out.scrollHeight;
-        }
-        console.log(text);
-    }
-
-    function loadAssets() {
-        document.getElementById('loader').style.display = 'flex';
-        for (let key in imageFiles) {
-            const img = new Image();
-            img.src = ASSETS_PATH + imageFiles[key];
-            img.onload = () => { assetsLoaded++; checkLoadComplete(); };
-            img.onerror = () => { console.error("Failed: " + key); assetsLoaded++; checkLoadComplete(); };
-            images[key] = img;
-        }
-    }
-
-    function checkLoadComplete() {
-        if (assetsLoaded === totalAssets) {
-            document.getElementById('loader').style.display = 'none';
-            // 初始啟動：套用 Stage 1 起始狀態
-            _applyStageState(1);
-            updateEditorContent(1);
-            updateStageSelectorUI();
-            drawGame();
-            log("系統準備就緒，歡迎來到水晶遊戲！");
-        }
-    }
-
-    // === 遊戲核心邏輯 ===
-    
-    // 完全重置 (回到 Stage 1，清除所有記憶)
-    function fullReset() {
-        userCodes = {};  // 清除所有儲存的程式碼
-        stageEndPositions = { 0: { row: 4, col: 3, dir: 0 } };  // 重置過關位置記錄
-        maxUnlockedStage = 1;
-        currentStageNum = 1;
-        _applyStageState(1);
-        updateEditorContent(1);
-        updateStageSelectorUI();
-        drawGame();
-        log("遊戲已完全重置 (Stage 1)");
-    }
-
-    // 確認後才完全重置
-    function confirmFullReset() {
-        if (confirm("⚠ 確定要從頭開始嗎？\n所有關卡的程式碼與進度都會清除！")) {
-            fullReset();
-        }
-    }
-
-    // 選擇關卡（儲存目前編輯器內容，再切換）
-    function selectStage(stageNum) {
-        if (stageNum > maxUnlockedStage) {
-            log(`Stage ${stageNum} 尚未解鎖，請先完成前面的關卡！`);
-            return;
-        }
-        if (isAnimating) return;
-
-        // 儲存目前關卡的程式碼
-        userCodes[currentStageNum] = editor.getValue();
-
-        // 切換關卡
-        currentStageNum = stageNum;
-        _applyStageState(stageNum);
-        updateEditorContent(stageNum);
-        updateStageSelectorUI();
-        drawGame();
-        log(`>>> 切換到 Stage ${stageNum} <<<`);
-    }
-
-    // 重試本關（只重置當關狀態，保留程式碼）
-    function retryCurrentStage() {
-        if (isAnimating) return;
-        userCodes[currentStageNum] = editor.getValue(); // 先存程式碼
-        _applyStageState(currentStageNum);
-        syncDisplayState();
-        drawGame();
-        log(`↺ 重試 Stage ${currentStageNum}`);
-    }
-
-    // 套用指定關卡的起始遊戲狀態（使用動態記錄的過關位置）
-    function _applyStageState(stageNum) {
-        const collected = stageNum - 1;  // 第N關開始時已收集 N-1 顆
-        // 用「前一關過關時的位置」當起點；若沒有記錄則用預設點
-        const pos = stageEndPositions[stageNum - 1] || { row: 4, col: 3, dir: 0 };
-        v_row = pos.row; v_col = pos.col; v_dir = pos.dir;
-        v_crystals_collected = collected;
-        // 水晶地圖：只保留尚未收集的水晶
-        v_crystals_on_map = JSON.parse(JSON.stringify(initialCrystalSet)).slice(collected);
-        d_crystals_collected = collected;
-        syncDisplayState();
-    }
-
-    // 更新關卡選擇按鈕 UI
-    function updateStageSelectorUI() {
-        for (let i = 1; i <= 5; i++) {
-            const btn = document.getElementById('sbtn-' + i);
-            if (!btn) continue;
-            btn.classList.remove('active', 'completed');
-            if (i < maxUnlockedStage) {
-                btn.classList.add('completed');
-                btn.textContent = `✅ S${i}`;
-            } else if (i === maxUnlockedStage && i !== currentStageNum) {
-                btn.textContent = `⭐ S${i}`;
-            } else if (i > maxUnlockedStage) {
-                btn.textContent = `🔒 S${i}`;
-            } else {
-                btn.textContent = `⭐ S${i}`;
-            }
-            if (i === currentStageNum) btn.classList.add('active');
-        }
-        document.getElementById('level-indicator').textContent = "Stage " + currentStageNum;
-    }
-
-    // 同步視覺狀態與邏輯狀態 (在非動畫期間使用)
-    function syncDisplayState() {
-        d_row = v_row; d_col = v_col; d_dir = v_dir;
-        d_crystals_on_map = JSON.parse(JSON.stringify(v_crystals_on_map));
-        d_crystals_collected = v_crystals_collected; // 同步收集數
-        animationQueue = [];
-        isAnimating = false;
-    }
-
-    // 準備執行 Python 前的狀態備份 (如果執行失敗可以還原? 目前不實作 Undo，只做同步)
-    function prepareRun() {
-        // 這裡不需要重置位置！這是 RPG 模式的關鍵。
-        // 我們只需要清空動畫佇列，確保從當前位置開始跑。
-        animationQueue = [];
-        isAnimating = false;
-        // 注意：v_row 等變數保持原樣，等待 Python 指令來改變它們
-    }
-
-    // === 繪圖系統 (依照 game_lib.py 座標) ===
-    function drawGame(overrideMsg = null) {
-        ctx.fillStyle = "#000";
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        
-        // 1. 繪製背景 (鋪滿)
-        if(img('bg')) ctx.drawImage(images['bg'], 0, 0);
-
-        // 2. 繪製地圖 (0,0) - 8x8 Tiles
-        for(let r=0; r<8; r++) {
-            for(let c=0; c<8; c++) {
-                let x = c * TILE_SIZE;
-                let y = r * TILE_SIZE;
-                if (mapData[r][c] === 0) {
-                   if(img('wall')) ctx.drawImage(images['wall'], x, y);
-                } else {
-                   if(img('road')) ctx.drawImage(images['road'], x, y);
-                }
-            }
-        }
-        
-        // 3. 繪製地圖上的水晶
-        d_crystals_on_map.forEach((pos) => {
-            let originalIndex = initialCrystalSet.findIndex(p => p[0] === pos[0] && p[1] === pos[1]);
-            let imgKey = 'c' + ((originalIndex % 5) + 1);
-            if (img(imgKey)) ctx.drawImage(images[imgKey], pos[1]*64, pos[0]*64);
-        });
-
-        // 4. 繪製角色
-        let mcKey = 'mc' + d_dir;
-        let arrowKey = 'arrow' + d_dir;
-        if(img(mcKey)) ctx.drawImage(images[mcKey], d_col*64, d_row*64);
-        
-        let ax = d_col*64, ay = d_row*64;
-        if (d_dir===0) { ax += 16; ay = (d_row-1)*64+48; } 
-        else if (d_dir===1) { ax = (d_col+1)*64-16; ay += 16; } 
-        else if (d_dir===2) { ax += 16; ay = (d_row+1)*64-16; } 
-        else if (d_dir===3) { ax = (d_col-1)*64+48; ay += 16; }
-        if(img(arrowKey)) ctx.drawImage(images[arrowKey], ax, ay);
-
-        // === UI 部分 ===
-        
-        // 5. 背包欄 (Right Side)
-        // 文字 "x / 5"
-        ctx.fillStyle = "black";
-        ctx.font = "20px 'Comic Sans MS', Arial";
-        ctx.textAlign = "center";
-        ctx.fillText(`${d_crystals_collected} / 5`, 570, 30);
-        
-        // 5個格子
-        for(let i=0; i<5; i++) {
-            if(img('box')) ctx.drawImage(images['box'], 526 + i*64, 40);
-            // 如果已收集，畫出小水晶
-            if(i < d_crystals_collected) {
-                 let cKey = 'c' + (i+1);
-                 if(img(cKey)) ctx.drawImage(images[cKey], 538 + i*64, 50, 40, 40);
-            }
-        }
-        
-        // 6. 函數說明板
-        if(img('func')) ctx.drawImage(images['func'], 526, 120);
-        
-        // 7. 任務卷軸 (根據目前水晶數決定顯示 m1 ~ m5)
-        // 邏輯: 0水晶 -> Stage1 (m1), 1水晶 -> Stage2 (m2)...
-        let currentStage = d_crystals_collected + 1;
-        if (currentStage > 5) currentStage = 5; // 通關後顯示最後一個或勝利畫面
-        
-        let mKey = 'm' + currentStage;
-        if(img(mKey)) ctx.drawImage(images[mKey], 480, 310);
-        
-        // 8. 底部進度條
-        // Mission: Get Crystals
-        ctx.font = "20px 'Comic Sans MS', Arial";
-        ctx.fillText("Mission: Get Crystals", 120, 532);
-        
-        // Stage 1
-        ctx.fillText("Stage1", 60, 590);
-        if(img('c1')) ctx.drawImage(images['c1'], 100, 548);
-        
-        ctx.fillText("-> Stage2", 210, 590);
-        if(img('c2')) ctx.drawImage(images['c2'], 260, 558);
-        
-        ctx.fillText("-> Stage3", 375, 590);
-        if(img('c3')) ctx.drawImage(images['c3'], 425, 558);
-        
-        ctx.fillText("-> Stage4", 540, 590);
-        if(img('c4')) ctx.drawImage(images['c4'], 590, 548);
-        
-        ctx.fillText("-> Stage5", 710, 590);
-        if(img('c5')) ctx.drawImage(images['c5'], 760, 558);
-
-        // 9. 按鈕 (繪製在 Canvas 上)
-        // Start/Stage Button: (552, 460), 100x50
-        drawButton("Stage" + currentStage, 552, 460, 100, 50, "#00ff00");
-        
-        // Quit Button: (720, 460), 100x50
-        drawButton("Quit", 720, 460, 100, 50, "#ff0000");
-
-        // 10. 勝利/失敗 覆蓋層
-        if (overrideMsg === 'victory') {
-             if(img('victory')) ctx.drawImage(images['victory'], 50, 100);
-        }
-        if (overrideMsg === 'defeat') {
-             if(img('defeat')) ctx.drawImage(images['defeat'], 50, 50);
-        }
-    }
-    
-    function drawButton(text, x, y, w, h, color) {
-        ctx.fillStyle = color;
-        ctx.fillRect(x, y, w, h);
-        ctx.fillStyle = "black";
-        ctx.font = "20px Arial";
-        ctx.textAlign = "center";
-        ctx.fillText(text, x + w/2, y + h/2 + 7);
-    }
-    
-    function img(key) { return images[key] && images[key].complete; }
-
-    // === 動畫系統 ===
-    function playAnimations() {
-        if (animationQueue.length === 0) {
-            isAnimating = false;
-            log("---" + "動作結束" + "---");
-            document.getElementById('btn-run').textContent = "▶ 執行程式 (Run)";
-            document.getElementById('btn-run').disabled = false;
-            
-            // 檢查是否過關，如果是，自動切換到下一關的程式碼
-            // 注意：這裡是動畫播放完畢，表示角色已經執行完當前指令
-            // 實際的 stage 切換應該由使用者點擊按鈕或自動觸發
-            // 我們這裡可以檢查如果最後一個動作是 'get' 並且成功收集，是否要提示
-            return;
-        }
-        isAnimating = true;
-        
-        const action = animationQueue.shift();
-        
-        if (action.type === 'move') {
-            d_row = action.row; d_col = action.col;
-            drawGame();
-            setTimeout(playAnimations, 300); 
-        } else if (action.type === 'turn') {
-            d_dir = action.dir;
-            drawGame();
-            setTimeout(playAnimations, 200); 
-        } else if (action.type === 'get') {
-            // 從畫面移除水晶
-            d_crystals_on_map = d_crystals_on_map.filter(p => !(p[0] === action.row && p[1] === action.col));
-            d_crystals_collected++; // 在動畫播放時才增加視覺數量
-            
-            audio['get'].play().catch(e => {});
-            drawGame();
-            
-            // 如果剛剛撿到的是該關卡目標，則觸發勝利動畫
-            // 檢查是否還有動作？通常 get_crystal 是最後一步
-            setTimeout(playAnimations, 500);
-            
-        } else if (action.type === 'stage_clear') {
-            // 小關卡過關：解鎖下一關
-            log("--- 關卡完成！準備進入下一關 ---");
-            isAnimating = false;
-            document.getElementById('btn-run').textContent = "▶ 執行程式 (Run)";
-            document.getElementById('btn-run').disabled = false;
-
-            // 儲存目前關卡程式碼，解鎖並切換到下一關
-            setTimeout(() => {
-                let nextStage = d_crystals_collected + 1;
-                if (nextStage <= 5) {
-                    // 儲存目前關卡程式碼
-                    userCodes[currentStageNum] = editor.getValue();
-                    // 解鎖下一關
-                    if (nextStage > maxUnlockedStage) maxUnlockedStage = nextStage;
-                    currentStageNum = nextStage;
-                    _applyStageState(nextStage);
-                    updateEditorContent(nextStage);
-                    updateStageSelectorUI();
-                    log(`>>> 解鎖並進入 Stage ${nextStage} <<<`);
-                }
-            }, 1000);
-
-        } else if (action.type === 'crash') {
-            audio['knock'].play().catch(e => {});
-            drawGame('defeat');
-            isAnimating = false;
-            document.getElementById('btn-run').textContent = "▶ 執行程式 (Run)";
-            document.getElementById('btn-run').disabled = false;
-        } else if (action.type === 'fail') {
-            audio['fail'].play().catch(e => {});
-            drawGame('defeat');
-            isAnimating = false;
-            document.getElementById('btn-run').textContent = "▶ 執行程式 (Run)";
-            document.getElementById('btn-run').disabled = false;
-        } else if (action.type === 'win') {
-            audio['victory'].play().catch(e => {});
-            drawGame('victory');
-            // 全破！
-            isAnimating = false;
-            document.getElementById('btn-run').textContent = "▶ 執行程式 (Run)";
-            document.getElementById('btn-run').disabled = false;
-            log("=== 恭喜！遊戲全部通關 === !");
-        }
-    }
-
-    // === Canvas 點擊事件 (處理按鈕) ===
-    canvas.onclick = function(event) {
-        const rect = canvas.getBoundingClientRect();
-        const x = event.clientX - rect.left;
-        const y = event.clientY - rect.top;
-        
-        // Stage Button: (552, 460), 100x50
-        if (x >= 552 && x <= 652 && y >= 460 && y <= 510) {
-            // 這是 "執行" 或 "進入下一關" 的按鈕？
-            // 在原版遊戲中，這按鈕是 "Start" 或 "Stage X"。
-            // 點擊後應該執行目前的程式碼。
-            runPython();
-        }
-        
-        // Quit Button: (720, 460), 100x50
-        if (x >= 720 && x <= 820 && y >= 460 && y <= 510) {
-            // 這裡的 Quit 可以定義為重置
-            if(confirm("確定要放棄並重新開始嗎？")) {
-                fullReset();
-            }
-        }
-    };
-
-    // === Python 介接 ===
-    var editor = CodeMirror.fromTextArea(document.getElementById("code"), {
-        mode: {name: "python", version: 3, singleLineStringErrors: false},
-        theme: "dracula",
-        lineNumbers: true,
-        indentUnit: 4,
-        matchBrackets: true,
-        extraKeys: {
-            "Tab": function(cm) {
-                if (cm.somethingSelected()) {
-                    cm.indentSelection("add");
-                } else {
-                    cm.replaceSelection("    ", "end");
-                }
-            }
-        }
-    });
-    
-    function builtinRead(x) {
-        if (Sk.builtinFiles === undefined || Sk.builtinFiles["files"][x] === undefined)
-            throw "File not found: '" + x + "'";
-        return Sk.builtinFiles["files"][x];
-    }
-    
-    // 輔助 return
-    function sk_none() { return Sk.builtin.none.none$; }
-    function sk_bool(b) { return new Sk.builtin.bool(b); }
-    function sk_int(n) { return new Sk.builtin.int_(n); }
-
-    function runPython() {
-        if (isAnimating) return;
-        
-        prepareRun();
-        document.getElementById('btn-run').textContent = "執行中...";
-        document.getElementById('btn-run').disabled = true;
-
-        var prog = editor.getValue();
-        var currentStage = currentStageNum;  // 使用選擇的關卡，不依賴收集數
-        var funcName = "stage" + currentStage;
-        
-        // 強制附加呼叫
-        var runCode = prog + "\n\n";
-        runCode += "if '" + funcName + "' in globals():\n";
-        runCode += "    " + funcName + "()\n";
-        
-        log(`--- 執行 Stage ${currentStage} ---`);
-
-        // 全域步驟計數器，防止 while True 卡死
-        let stepCount = 0;
-        const MAX_STEPS = 200;
-
-        Sk.configure({
-            output: log,
-            read: builtinRead,
-            syspath: ["skulpt-stdlib"],
-            retries: -1,
-            execLimit: 5000  // 最多執行5000個指令，防止無限迴圈卡死
-        });
-
-        // 定義 API (包含邏輯檢查)
-        Sk.builtins.move_forward = new Sk.builtin.func(function() {
-            try {
-                stepCount++;
-                if (stepCount > MAX_STEPS || animationQueue.length > 500) {
-                    animationQueue.push({type: 'fail'});
-                    log("[錯誤] 指令數量過多，可能有無限迴圈！");
-                    return sk_none();
-                }
-                let nr = v_row, nc = v_col;
-                if (v_dir === 0) nr--; else if (v_dir === 1) nc++; else if (v_dir === 2) nr++; else if (v_dir === 3) nc--;
-                
-                let is_wall = false;
-                if (nr < 0 || nr >= 8 || nc < 0 || nc >= 8) is_wall = true;
-                else if (mapData[nr][nc] === 0) is_wall = true;
-
-                if (is_wall) {
-                    animationQueue.push({type: 'crash'});
-                } else {
-                    v_row = nr; v_col = nc;
-                    animationQueue.push({type: 'move', row: v_row, col: v_col});
-                }
-                return sk_none();
-            } catch(e) { console.error(e); throw e; }
-        });
-
-        Sk.builtins.turn_left = new Sk.builtin.func(function() {
-            stepCount++;
-            if (stepCount > MAX_STEPS || animationQueue.length > 500) {
-                animationQueue.push({type: 'fail'});
-                log("[錯誤] 指令數量過多，可能有無限迴圈！");
-                return sk_none();
-            }
-            v_dir = (v_dir - 1 + 4) % 4;
-            animationQueue.push({type: 'turn', dir: v_dir});
-            return sk_none();
-        });
-
-        Sk.builtins.turn_right = new Sk.builtin.func(function() {
-            stepCount++;
-            if (stepCount > MAX_STEPS || animationQueue.length > 500) {
-                animationQueue.push({type: 'fail'});
-                log("[錯誤] 指令數量過多，可能有無限迴圈！");
-                return sk_none();
-            }
-            v_dir = (v_dir + 1) % 4;
-            animationQueue.push({type: 'turn', dir: v_dir});
-            return sk_none();
-        });
-
-        Sk.builtins.get_crystal = new Sk.builtin.func(function() {
-            let foundIndex = v_crystals_on_map.findIndex(p => p[0] === v_row && p[1] === v_col);
-            if (foundIndex !== -1) {
-                // 檢查是否是目標水晶 (原本遊戲邏輯是按順序收集)
-                // 這裡簡化為：只要有水晶就能拿，但拿到後檢查是否為第5顆
-                v_crystals_on_map.splice(foundIndex, 1);
-                v_crystals_collected++;
-                animationQueue.push({type: 'get', row: v_row, col: v_col});
-                
-                // 記錄本關過關時角色位置（供下一關跳關使用）
-                stageEndPositions[v_crystals_collected] = { row: v_row, col: v_col, dir: v_dir };
-
-                // 檢查是否全破 (5顆水晶)
-                if (v_crystals_collected === 5) {
-                    animationQueue.push({type: 'win'}); 
-                } else {
-                    // 中途過關，加入過渡動畫
-                    animationQueue.push({type: 'stage_clear'});
-                }
-            } else {
-                animationQueue.push({type: 'fail'});
-            }
-            return sk_none();
-        });
-        
-        Sk.builtins.is_forward_path = new Sk.builtin.func(function() {
-            let nr = v_row, nc = v_col;
-            if (v_dir === 0) nr--; else if (v_dir === 1) nc++; else if (v_dir === 2) nr++; else if (v_dir === 3) nc--;
-            if (nr < 0 || nr >= 8 || nc < 0 || nc >= 8) return sk_int(0);
-            return sk_int(mapData[nr][nc]);
-        });
-        
-        Sk.builtins.reach_crystal = new Sk.builtin.func(function() {
-            let found = v_crystals_on_map.some(p => p[0] === v_row && p[1] === v_col);
-            return sk_bool(found);
-        });
-
-        Sk.misceval.asyncToPromise(function() {
-            return Sk.importMainWithBody("<stdin>", false, runCode, true);
-        }).then(function(mod) {
-            log("Python 執行完畢");
-            playAnimations();
-        }, function(err) {
-            log("[錯誤] " + err.toString());
-            document.getElementById('btn-run').textContent = "▶ 執行程式 (Run)";
-            document.getElementById('btn-run').disabled = false;
-        });
-    }
-
-    const levels = {
-        1: "def stage1():\n    # Stage 1: 基礎移動\n    # 任務：幫主角走到紅色水晶的位置，然後撿起來！\n    # \n    # 提示：\n    # 使用 move_forward() 向前走\n    # 到了之後用 get_crystal() 撿起來\n    ",
-        2: "def stage2():\n    # Stage 2: 轉彎與迴圈\n    # 任務：走到橙色水晶並撿起來。\n    # \n    # 提示：\n    # [基礎] 一步一步寫指令走到終點。\n    # [進階] 發現有重複的動作嗎？試試看用「for 迴圈」讓電腦幫你重複執行，程式碼會變短喔！\n    ",
-        3: "def stage3():\n    # Stage 3: 規律的路徑\n    # 任務：取得綠色水晶。\n    # \n    # 提示：\n    # [基礎] 數數看有幾格，用 for 迴圈走過去。\n    # [進階] 觀察路徑，是不是有「走一段路 + 轉彎」的形狀重複出現呢？\n    #       試試看用「雙層迴圈」(迴圈裡面包著迴圈) 來解決！\n    ",
-        4: "def stage4():\n    # Stage 4: 聰明的探險家\n    # 任務：取得藍色水晶。\n    # \n    # 提示：\n    # [基礎] 數數看有幾格，用 for 迴圈走過去。\n    # [進階] 直線太長懶得數？試試看「while 迴圈」(當...的時候)\n    #       搭配「is_forward_path() 感測器」，讓主角自己判斷「前方有路就一直走」！\n    ",
-        5: "def stage5():\n    # Stage 5: 最終考驗\n    # 任務：取得最後的黑色水晶！\n    # \n    # 提示：\n    # 這是最後一關了！\n    # 請綜合使用你學過的「if 判斷」和各種「迴圈技巧」來完成任務吧！\n    "
-    };
-
-    function updateEditorContent(level) {
-        // 優先使用學生儲存的程式碼，否則用預設範本
-        const code = userCodes[level] !== undefined ? userCodes[level] : (levels[level] || "# 恭喜通關！");
-        editor.setValue(code);
-        updateStageSelectorUI();
-    }
-
-    window.onload = loadAssets;
-
-</script>
+    <script>
+        window.onload = Game.init;
+    </script>
 </body>
 </html>

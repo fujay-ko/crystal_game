@@ -16,7 +16,7 @@ clock = pygame.time.Clock()
 pygame.display.set_caption('水晶遊戲')
 FPS = 10
 
-# 設定資源路徑 (解決找不到檔案的問題)
+# 設定資源路徑
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MATERIAL_DIR = os.path.join(BASE_DIR, 'material')
 
@@ -63,6 +63,21 @@ set_crystal = [[3, 3], [3, 6], [6, 3], [4, 1], [1, 6]]
 bak_crystal = set_crystal.copy()
 curr_row, curr_col, direction, crystals = 4, 3, 0, 0
 
+# === 無限迴圈防護 ===
+MAX_INSTRUCTIONS = 500
+_instr_count = 0
+_muted = False
+
+class InstructionLimitError(Exception):
+    pass
+
+def _check_instr():
+    global _instr_count
+    _instr_count += 1
+    if _instr_count > MAX_INSTRUCTIONS:
+        _instr_count = 0
+        raise InstructionLimitError()
+
 # 儲存學生定義的關卡函式
 stages = {}
 
@@ -74,6 +89,15 @@ def set_stages(s1, s2, s3, s4, s5):
     stages[4] = s4
     stages[5] = s5
 
+def safe_stage_call(n):
+    global _instr_count
+    _instr_count = 0
+    try:
+        stages[n]()
+        return True, _instr_count
+    except InstructionLimitError:
+        return False, None
+
 def start_game():
     initial_game()
     pygame.quit()
@@ -82,6 +106,24 @@ def text_box(text, font):
     text = font.render(text, True, black)
     return text, text.get_rect()
 
+def check_mute_key():
+    global _muted
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT or (event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE):
+            return 'quit'
+        if event.type == pygame.KEYDOWN and event.key == pygame.K_m:
+            _muted = not _muted
+            pygame.mixer.music.set_volume(0 if _muted else 1.0)
+            return 'mute'
+    return None
+
+def play_sfx(path):
+    if not _muted:
+        pygame.mixer.music.load(path)
+        pygame.mixer.music.play()
+        time.sleep(0.5)
+        pygame.mixer.music.stop()
+
 def button(msg, x, y, w, h, ic, ac, action=None):
     pos = pygame.mouse.get_pos()
     click = pygame.mouse.get_pressed()
@@ -89,7 +131,7 @@ def button(msg, x, y, w, h, ic, ac, action=None):
     smallText = pygame.font.SysFont('arial', 20)
     textSurf, textRect = text_box(msg, smallText)
     textRect.center = (x+w/2, y+h/2)
-    screen.blit(textSurf, textRect)    
+    screen.blit(textSurf, textRect)
     if x+w > pos[0] > x and y+h > pos[1] > y:
         if click[0] == 1 and action != None:
             action()
@@ -128,7 +170,7 @@ def chk_crystal(r, c):
 
 def chk_legal(r, c):
     if set_map[r][c]==0: return False
-    else: return True        
+    else: return True
 
 def re_draw():
     global direction, curr_row, curr_col
@@ -146,12 +188,14 @@ def re_draw():
 
 def turn_left():
     global direction
+    _check_instr()
     re_draw()
     direction = (direction-1)%4
     show_mc(direction)
 
 def turn_right():
     global direction
+    _check_instr()
     re_draw()
     direction = (direction+1)%4
     show_mc(direction)
@@ -183,32 +227,46 @@ def draw_right():
         screen.blit(pygame.transform.scale(c4, (40, 40)), (730, 50))
     if crystals == 5:
         screen.blit(pygame.transform.scale(c5, (40, 40)), (794, 50))
-    
 
 def crash(idx):
-    if idx==1: pygame.mixer.music.load(get_asset_path('knock_on_wall.mp3'))  
-    elif idx==2: pygame.mixer.music.load(get_asset_path('fail.mp3'))
-    pygame.mixer.music.play()
-    time.sleep(0.5)
-    pygame.mixer.music.stop()
+    if idx==1: play_sfx(get_asset_path('knock_on_wall.mp3'))
+    elif idx==2: play_sfx(get_asset_path('fail.mp3'))
+    screen.blit(defeat, (50, 50))
+    pygame.display.update()
+    time.sleep(0.3)
+    result = _wait_for_menu('restart')
+    if result:
+        initial_game()
+
+def _wait_for_menu(default_action='restart'):
+    """共享的選單等待迴圈，支援 ESC 返回、M 靜音、按鈕點擊"""
     while True:
+        action = check_mute_key()
+        if action == 'quit':
+            pygame.quit()
         for event in pygame.event.get():
-            if event.type == pygame.QUIT: pygame.quit()
-        screen.blit(defeat, (50, 50))        
-        button("Restart", 552, 460, 100, 50, green, bright_green, initial_game)
-        button("Quit", 720, 460, 100, 50, red, bright_red, quit_game)
+            if event.type == pygame.QUIT:
+                pygame.quit()
+        button("Restart", 552, 460, 100, 50, green, bright_green, lambda: None)
+        button("Quit", 720, 460, 100, 50, red, bright_red, pygame.quit)
+        mute_text = "Sound: ON" if not _muted else "Sound: OFF"
+        button(mute_text, 440, 460, 100, 50, gray, gray, None)
+        smallText = pygame.font.SysFont('arial', 14)
+        hint, _ = text_box("[M] Mute  [ESC] Quit", smallText)
+        screen.blit(hint, (440, 430))
         pygame.display.update()
         clock.tick(FPS)
 
 def move_forward():
     global direction, curr_row, curr_col
+    _check_instr()
     re_draw()
     if direction==0:  n_row, n_col = curr_row-1, curr_col
     elif direction==1: n_row, n_col = curr_row, curr_col+1
     elif direction==2: n_row, n_col = curr_row+1, curr_col
     elif direction==3: n_row, n_col = curr_row, curr_col-1
-    if chk_legal(n_row, n_col)==True:  curr_row, curr_col = n_row, n_col; show_mc(direction) 
-    else: crash(1)  
+    if chk_legal(n_row, n_col)==True:  curr_row, curr_col = n_row, n_col; show_mc(direction)
+    else: crash(1)
 
 def reach_crystal():
     global direction, curr_row, curr_col
@@ -224,7 +282,7 @@ def is_forward_path():
     return set_map[n_row][n_col]
 
 def success():
-    global crystals, curr_row, curr_col, direction
+    global crystals, curr_row, curr_col, direction, _instr_count
     set_crystal.remove([curr_row, curr_col])
     re_draw()
     show_mc(direction)
@@ -233,34 +291,74 @@ def success():
     if crystals == 5:
         screen.blit(victory, (50, 100))
         pygame.display.update()
-        pygame.mixer.music.load(get_asset_path('victory.mp3'))
-        pygame.mixer.music.play()
-        time.sleep(1)
-        pygame.mixer.music.stop()
+        play_sfx(get_asset_path('victory.mp3'))
     else:
-        pygame.mixer.music.load(get_asset_path('get.mp3'))
-        pygame.mixer.music.play()
-        time.sleep(0.5)
-        pygame.mixer.music.stop()
+        play_sfx(get_asset_path('get.mp3'))
 
+    # 顯示指令數
+    largeText = pygame.font.SysFont('comicsansms', 18)
+    instr_text = 'Used: %d instructions' % _instr_count
+    TextSurf, TextRect = text_box(instr_text, largeText)
+    TextRect.center = (430, 340)
+    screen.blit(TextSurf, TextRect)
+    pygame.display.update()
+    time.sleep(0.5)
+
+    _wait_for_success_menu()
+
+def _wait_for_success_menu():
+    global crystals
     while True:
+        action = check_mute_key()
+        if action == 'quit':
+            pygame.quit()
         for event in pygame.event.get():
-            if event.type == pygame.QUIT: pygame.quit()
+            if event.type == pygame.QUIT:
+                pygame.quit()
 
-        btn_txt = 'Stage' + str(crystals+1)
-        if crystals == 1: button(btn_txt, 552, 460, 100, 50, green, bright_green, stages.get(2))
-        elif crystals == 2: button(btn_txt, 552, 460, 100, 50, green, bright_green, stages.get(3))
-        elif crystals == 3: button(btn_txt, 552, 460, 100, 50, green, bright_green, stages.get(4))
-        elif crystals == 4: button(btn_txt, 552, 460, 100, 50, green, bright_green, stages.get(5))
+        btn_txt = 'Stage' + str(crystals + 1) if crystals < 5 else 'Restart'
+        if crystals == 1:
+            button(btn_txt, 552, 460, 100, 50, green, bright_green, lambda: _play_stage(2))
+        elif crystals == 2:
+            button(btn_txt, 552, 460, 100, 50, green, bright_green, lambda: _play_stage(3))
+        elif crystals == 3:
+            button(btn_txt, 552, 460, 100, 50, green, bright_green, lambda: _play_stage(4))
+        elif crystals == 4:
+            button(btn_txt, 552, 460, 100, 50, green, bright_green, lambda: _play_stage(5))
         elif crystals == 5:
-            button('Restart' , 552, 460, 100, 50, green, bright_green, initial_game)
             screen.blit(victory, (50, 100))
+            button('Restart', 552, 460, 100, 50, green, bright_green, initial_game)
         button("Quit", 720, 460, 100, 50, red, bright_red, quit_game)
+
+        mute_text = "Sound: ON" if not _muted else "Sound: OFF"
+        button(mute_text, 440, 460, 100, 50, gray, gray, None)
+        smallText = pygame.font.SysFont('arial', 14)
+        hint, _ = text_box("[M] Mute  [ESC] Quit", smallText)
+        screen.blit(hint, (440, 430))
+
         pygame.display.update()
         clock.tick(FPS)
 
+def _play_stage(n):
+    ok, count = safe_stage_call(n)
+    if not ok:
+        _show_instruction_error()
+
+def _show_instruction_error():
+    screen.blit(defeat, (50, 50))
+    largeText = pygame.font.SysFont('comicsansms', 22)
+    warning, _ = text_box('指令數量過多！請檢查迴圈條件', largeText)
+    warning_rect = warning.get_rect(center=(430, 250))
+    screen.blit(warning, warning_rect)
+    pygame.display.update()
+    time.sleep(1)
+    result = _wait_for_menu('restart')
+    if result:
+        initial_game()
+
 def get_crystal():
     global crystals, curr_row, curr_col
+    _check_instr()
     if [curr_row, curr_col] == set_crystal[0]: success()
     else: crash(2)
 
@@ -268,7 +366,7 @@ def quit_game():
     pygame.quit()
 
 def initial_game():
-    global curr_row, curr_col, direction, crystals, set_crystal, bak_crystal
+    global curr_row, curr_col, direction, crystals, set_crystal, bak_crystal, _muted
     screen.blit(bg, (0, 0))
     for i in range(8):
         for j in range(8):
@@ -316,14 +414,24 @@ def initial_game():
         screen.blit(box, (526+i*64, 40))
     screen.blit(func, (526, 120))
     screen.blit(m1, (480, 310))
-    
+
     while True:
+        result = check_mute_key()
+        if result == 'quit':
+            pygame.quit()
+
         for event in pygame.event.get():
-            if event.type == pygame.QUIT or (event.type==pygame.KEYDOWN and event.key==pygame.K_ESCAPE):
+            if event.type == pygame.QUIT:
                 pygame.quit()
-                
-        button("Stage1", 552, 460, 100, 50, green, bright_green, stages.get(1))
+
+        button("Stage1", 552, 460, 100, 50, green, bright_green, lambda: _play_stage(1))
         button("Quit", 720, 460, 100, 50, red, bright_red, quit_game)
-       
+
+        mute_text = "Sound: ON" if not _muted else "Sound: OFF"
+        button(mute_text, 440, 460, 100, 50, gray, gray, None)
+        smallText = pygame.font.SysFont('arial', 14)
+        hint, _ = text_box("[M] Mute  [ESC] Quit", smallText)
+        screen.blit(hint, (440, 430))
+
         pygame.display.update()
         clock.tick(FPS)
