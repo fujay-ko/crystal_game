@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>水晶遊戲 - Python 網頁版</title>
+    <link rel="stylesheet" href="lib/codemirror.min.css">
+    <link rel="stylesheet" href="lib/dracula.min.css">
+    <script src="lib/codemirror.min.js"></script>
+    <script src="lib/python.min.js"></script>
+    <script src="lib/skulpt.min.js"></script>
+    <script src="lib/skulpt-stdlib.js"></script>
+
+    <style>
+        /* ===== Reset & Base ===== */
+        * { box-sizing: border-box; }
+        body {
+            font-family: 'Comic Sans MS', '微軟正黑體', sans-serif;
+            background-color: #2c3e50;
+            margin: 0; display: flex; height: 100vh;
+            color: white; overflow: hidden;
+        }
+
+        /* ===== Layout ===== */
+        #left-panel {
+            width: 35%; display: flex; flex-direction: column;
+            padding: 10px; box-sizing: border-box;
+            background: #34495e; border-right: 2px solid #2c3e50;
+        }
+        #right-panel {
+            width: 65%; display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            background: #222; position: relative;
+        }
+
+        h2 { margin: 5px 0; font-size: 1.2rem; }
+        .CodeMirror { flex-grow: 1; border-radius: 5px; font-size: 16px; }
+
+        #controls { margin-top: 10px; display: flex; gap: 10px; flex-wrap: wrap; }
+        button {
+            padding: 8px 15px; font-size: 14px; border: none;
+            border-radius: 5px; cursor: pointer; color: white; font-weight: bold;
+        }
+        #btn-run { background-color: #27ae60; flex-grow: 2; }
+        #btn-run:hover:not(:disabled) { background-color: #2ecc71; }
+        #btn-run:disabled { opacity: 0.5; cursor: not-allowed; }
+        #btn-reset { background-color: #c0392b; }
+        #btn-reset:hover { background-color: #e74c3c; }
+
+        canvas {
+            background: #000;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+            border-radius: 4px;
+            max-width: 100%;
+            height: auto;
+        }
+
+        #output {
+            height: 120px; background: #000; color: #0f0;
+            padding: 10px; overflow-y: auto; font-family: monospace;
+            margin-top: 10px; border-radius: 5px; border: 1px solid #555;
+            white-space: pre-wrap; font-size: 13px;
+        }
+
+        #level-indicator { padding: 5px; font-size: 18px; color: yellow; font-weight: bold; }
+
+        #loader {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8); display: flex;
+            justify-content: center; align-items: center;
+            z-index: 10; font-size: 24px; color: white; display: none;
+        }
+
+        /* ===== Stage Selector ===== */
+        #stage-selector { display: flex; gap: 6px; margin: 8px 0; flex-wrap: wrap; }
+        .btn-stage {
+            padding: 6px 10px; font-size: 13px; border-radius: 6px;
+            background: #4a6274; color: #ccc; border: 2px solid transparent;
+            cursor: pointer; font-weight: bold; transition: all 0.2s; flex: 1;
+        }
+        .btn-stage:hover { background: #5d7a8a; color: white; }
+        .btn-stage.active {
+            background: #2980b9; color: white;
+            border-color: #5dade2; box-shadow: 0 0 8px rgba(93,173,226,0.5);
+        }
+        .btn-stage.completed { background: #1e8449; color: #afffaf; border-color: #27ae60; }
+        .btn-stage.completed.active { background: #27ae60; border-color: #afffaf; }
+
+        #btn-retry { background-color: #e67e22; }
+        #btn-retry:hover { background-color: #f39c12; }
+
+        #btn-toggle-sound { background-color: #7f8c8d; font-size: 13px; padding: 5px 10px; }
+        #btn-toggle-sound:hover { background-color: #95a5a6; }
+
+        #btn-reset-code { background-color: #8e44ad; font-size: 12px; padding: 5px 10px; }
+        #btn-reset-code:hover { background-color: #9b59b6; }
+
+        #btn-guide { background-color: #2980b9; font-size: 13px; padding: 5px 10px; }
+        #btn-guide:hover { background-color: #3498db; }
+
+        #speed-group { display: flex; gap: 4px; align-items: center; }
+        #speed-group .speed-label { font-size: 12px; color: #bdc3c7; }
+        .btn-speed { background-color: #4a6274; font-size: 12px; padding: 5px 10px; }
+        .btn-speed:hover { background-color: #5d7a8a; }
+        .btn-speed.active { background-color: #27ae60; }
+
+        #danger-zone { margin-top: 6px; display: flex; justify-content: flex-end; }
+        #btn-full-reset {
+            background-color: #7f8c8d; font-size: 12px;
+            padding: 5px 10px; opacity: 0.7;
+        }
+        #btn-full-reset:hover { background-color: #c0392b; opacity: 1; }
+
+        /* ===== Output Header ===== */
+        #output-header {
+            display: flex; justify-content: space-between;
+            align-items: center; margin-top: 6px;
+        }
+        #output-header h2 { margin: 0; font-size: 1rem; }
+        #btn-clear-output {
+            background-color: #555; font-size: 11px;
+            padding: 3px 8px; cursor: pointer; border-radius: 3px;
+        }
+        #btn-clear-output:hover { background-color: #777; }
+
+        #btn-run { display: flex; align-items: center; justify-content: center; gap: 4px; }
+        .key-hint { font-size: 10px; opacity: 0.6; font-weight: normal; }
+
+        /* ===== Canvas Overlay Buttons ===== */
+        #canvas-overlay-buttons {
+            position: absolute; bottom: 10px; right: 10px;
+            display: flex; gap: 8px; z-index: 5;
+        }
+        #canvas-overlay-buttons button {
+            padding: 10px 20px; font-size: 15px; border-radius: 6px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+        }
+        #btn-overlay-run { background-color: #27ae60; }
+        #btn-overlay-run:hover { background-color: #2ecc71; }
+        #btn-overlay-reset { background-color: #e67e22; }
+        #btn-overlay-reset:hover { background-color: #f39c12; }
+
+        /* ===== Stage Clear Overlay ===== */
+        #stage-clear-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.55); display: none;
+            justify-content: center; align-items: center; z-index: 8;
+            pointer-events: none;
+        }
+        #stage-clear-overlay.show { display: flex; }
+        #stage-clear-overlay .msg {
+            font-size: 48px; font-weight: bold; color: #2ecc71;
+            text-shadow: 0 0 30px rgba(46,204,113,0.6);
+            animation: popIn 0.4s ease-out;
+        }
+        @keyframes popIn {
+            0% { transform: scale(0.3); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        /* ===== Newbie Guide ===== */
+        #guide-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.75); display: none;
+            justify-content: center; align-items: center; z-index: 100;
+        }
+        #guide-overlay.show { display: flex; }
+        #guide-box {
+            background: #34495e; border-radius: 12px; padding: 30px;
+            max-width: 480px; text-align: center; box-shadow: 0 0 40px rgba(0,0,0,0.5);
+        }
+        #guide-box h2 { color: #f1c40f; margin-top: 0; }
+        #guide-box p { font-size: 16px; line-height: 1.6; color: #ecf0f1; }
+        #guide-box .step { text-align: left; margin: 12px 0; padding: 10px; background: rgba(255,255,255,0.08); border-radius: 6px; }
+        #guide-box .step .num { display: inline-block; width: 24px; height: 24px; background: #3498db; color: white; border-radius: 50%; text-align: center; line-height: 24px; font-weight: bold; margin-right: 8px; }
+        #btn-guide-start {
+            background: #27ae60; color: white; padding: 12px 30px;
+            font-size: 18px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; margin-top: 10px;
+        }
+        #btn-guide-start:hover { background: #2ecc71; }
+
+        /* ===== Responsive: narrow screens ===== */
+        @media (max-width: 900px) {
+            body { flex-direction: column; overflow-y: auto; }
+            #left-panel { width: 100%; border-right: none; border-bottom: 2px solid #2c3e50; min-height: 50vh; }
+            #right-panel { width: 100%; min-height: 50vh; }
+            canvas { max-width: 100%; height: auto; }
+            #canvas-overlay-buttons { position: fixed; bottom: 10px; right: 10px; }
+        }
+
+        @media (max-width: 500px) {
+            #left-panel { min-height: 40vh; }
+            #right-panel { min-height: 60vh; }
+            #stage-clear-overlay .msg { font-size: 32px; }
+            button { font-size: 12px; padding: 6px 10px; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="left-panel">
+        <div style="display:flex; justify-content: space-between; align-items: center;">
+            <h2>程式碼編輯區</h2>
+            <span id="level-indicator">Stage 1</span>
+        </div>
+
+        <div id="stage-selector">
+            <button class="btn-stage active" id="sbtn-1" onclick="Game.selectStage(1)">⭐ S1</button>
+            <button class="btn-stage" id="sbtn-2" onclick="Game.selectStage(2)">🔒 S2</button>
+            <button class="btn-stage" id="sbtn-3" onclick="Game.selectStage(3)">🔒 S3</button>
+            <button class="btn-stage" id="sbtn-4" onclick="Game.selectStage(4)">🔒 S4</button>
+            <button class="btn-stage" id="sbtn-5" onclick="Game.selectStage(5)">🔒 S5</button>
+        </div>
+
+        <textarea id="code"></textarea>
+
+        <div id="controls">
+            <button id="btn-run" onclick="Game.runPython()">
+                ▶ 執行程式 <span class="key-hint">(Ctrl+Enter)</span>
+            </button>
+            <button id="btn-retry" onclick="Game.retryCurrentStage()">↺ 重試本關</button>
+            <button id="btn-toggle-sound" onclick="Game.toggleSound()">🔊 音效</button>
+            <button id="btn-reset-code" onclick="Game.resetCurrentCode()">↺ 重置程式碼</button>
+            <button id="btn-guide" onclick="Game.showGuide()">❓ 說明</button>
+            <span id="speed-group">
+                <span class="speed-label">速度</span>
+                <button class="btn-speed active" id="btn-speed-1" onclick="Game.setSpeed(1)">1x</button>
+                <button class="btn-speed" id="btn-speed-2" onclick="Game.setSpeed(2)">2x</button>
+                <button class="btn-speed" id="btn-speed-4" onclick="Game.setSpeed(4)">4x</button>
+            </span>
+        </div>
+        <div id="danger-zone">
+            <button id="btn-full-reset" onclick="Game.confirmFullReset()">⚠ 從頭開始</button>
+        </div>
+
+        <div id="output-header">
+            <h2>執行輸出</h2>
+            <button id="btn-clear-output" onclick="Game.clearOutput()">🗑 清除</button>
+        </div>
+        <div id="output">系統準備中...</div>
+    </div>
+
+    <div id="right-panel">
+        <canvas id="gameCanvas" width="860" height="640"></canvas>
+
+        <div id="canvas-overlay-buttons">
+            <button id="btn-overlay-run" onclick="Game.runPython()">▶ 執行</button>
+            <button id="btn-overlay-reset" onclick="Game.retryCurrentStage()">↺ 重設</button>
+        </div>
+
+        <div id="stage-clear-overlay">
+            <span class="msg">✓ 關卡通過！</span>
+        </div>
+
+        <div id="loader">遊戲資源載入中...</div>
+    </div>
+
+    <!-- Newbie Guide Overlay -->
+    <div id="guide-overlay" onclick="Game.hideGuide()">
+        <div id="guide-box" onclick="event.stopPropagation()">
+            <h2>🎮 歡迎來到水晶遊戲！</h2>
+            <p>你將透過撰寫 Python 程式碼，控制角色走迷宮、收集水晶！</p>
+            <div class="step"><span class="num">1</span> 左邊「程式碼編輯區」寫你的程式</div>
+            <div class="step"><span class="num">2</span> 按「▶ 執行程式」或按 <kbd>Ctrl+Enter</kbd> 執行程式</div>
+            <div class="step"><span class="num">3</span> 右邊遊戲畫面會動畫展示角色移動</div>
+            <p style="font-size:14px; color:#bdc3c7; margin-top:16px;">
+                可用指令：move_forward()、turn_left()、turn_right()、<br>
+                get_crystal()、is_forward_path()、reach_crystal()
+            </p>
+            <button id="btn-guide-start" onclick="Game.hideGuide()">開始挑戰！</button>
+        </div>
+    </div>
+
+    <!-- JS Modules (load order matters) -->
+    <script src="js/constants.js"></script>
+    <script src="js/utils.js"></script>
+    <script src="js/state.js"></script>
+    <script src="js/assets.js"></script>
+    <script src="js/renderer.js"></script>
+    <script src="js/animation.js"></script>
+    <script src="js/ui.js"></script>
+
+    <script>
+        window.onload = Game.init;
+    </script>
+</body>
+</html>
